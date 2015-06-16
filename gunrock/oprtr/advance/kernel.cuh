@@ -26,10 +26,22 @@
 
 #include <moderngpu.cuh>
 
+#include <sys/time.h>
+
+#include "EvqueueManager.h"
+
+extern EvqueueManager *evqm;
+
 namespace gunrock {
 namespace oprtr {
-namespace advance {
 
+struct timeval start, end;
+unsigned int h_yield_point;
+int h_elapsed;
+unsigned int *d_yield_point_ret;
+int *d_elapsed_ret;
+
+namespace advance {
 /**
  * @brief Advance operator kernel entry point.
  *
@@ -328,7 +340,8 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                         frontier_attribute.queue_length,
                         enactor_stats.d_node_locks_out,
                         context);
-
+                cudaDeviceSynchronize();
+                gettimeofday(&start, NULL);
                 gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
                 <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
                                         frontier_attribute.queue_reset,
@@ -357,6 +370,55 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                                         R_OP,
                                         d_value_to_reduce,
                                         d_reduce_frontier);
+		cudaDeviceSynchronize();
+		gettimeofday(&end, NULL);
+		std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                unsigned long grid[3], block[3];
+                grid[0] = num_block; grid[1] = 1; grid[2] = 1;
+                block[0] = KernelPolicy::LOAD_BALANCED::THREADS; block[1] = 1; block[2] = 1;
+                KernelIdentifier kid("RelaxPartitionedEdges2", grid, block);
+                //EvqueueLaunch(kid);
+		unsigned int launch_ctr = 0;
+		while(h_yield_point < grid[0]*grid[1]-1)
+		{
+                gettimeofday(&start, NULL);
+                cudaDeviceSynchronize();
+                gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
+                <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
+                                        frontier_attribute.queue_reset,
+                                        frontier_attribute.queue_index,
+                                        enactor_stats.iteration,
+                                        d_row_offsets,
+                                        d_column_indices,
+                                        d_row_indices,
+                                        &partitioned_scanned_edges[1],
+                                        enactor_stats.d_node_locks_out,
+                                        KernelPolicy::LOAD_BALANCED::BLOCKS,
+                                        d_done,
+                                        d_in_key_queue,
+                                        d_out_key_queue,
+                                        data_slice,
+                                        frontier_attribute.queue_length,
+                                        output_queue_len,
+                                        split_val,
+                                        max_in,
+                                        max_out,
+                                        work_progress,
+                                        enactor_stats.advance_kernel_stats,
+                                        ADVANCE_TYPE,
+                                        inverse_graph,
+                                        R_TYPE,
+                                        R_OP,
+                                        d_value_to_reduce,
+                                        d_reduce_frontier);
+                cudaDeviceSynchronize();
+		gettimeofday(&end, NULL);
+		launch_ctr++;
+		std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+		cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+		std::cout << launch_ctr << " => " << h_yield_point << " " << h_elapsed << std::endl;
+                }
 
                 //util::DisplayDeviceResults(d_out_key_queue, output_queue_len);
             }

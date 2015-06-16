@@ -4,19 +4,20 @@ OPTION1="--undirected" #undirected
 OPTION2="--quick" #quick running without CPU reference algorithm, if you want to test CPU reference algorithm, delete $OPTION2 in some lines. Warning: for large data this can take a long time.
 
 #get all execution files in ./bin
-files=(./bin/*)
+#files=(./bin/*)
 #split file names into arr
-arr=$(echo $files | tr " " "\n")
+#arr=$(echo $files | tr " " "\n")
 max_ver_num="$"
-exe_file=${arr[0]}
+#exe_file=${arr[0]}
+exe_file=test_pr_6.5_x86_64
 #iterate over all file names to get the largest version number
-for x in $arr
-do
-    output=$(grep -o "[0-9]\.[0-9]" <<<"$x")
-    if [ "$output" \> "$max_ver_num" ]; then
-        exe_file=$x
-    fi
-done
+#for x in $arr
+#do
+#    output=$(grep -o "[0-9]\.[0-9]" <<<"$x")
+#    if [ "$output" \> "$max_ver_num" ]; then
+#        exe_file=$x
+#    fi
+#done
 
 #put OS and Device type here
 SUFFIX="ubuntu12.04.k40c"

@@ -36,6 +36,8 @@
 
 #include <moderngpu.cuh>
 
+#include "EvqueueManager.h"
+
 using namespace gunrock;
 using namespace gunrock::util;
 using namespace gunrock::oprtr;
@@ -415,6 +417,8 @@ void RunTests(
 
     float elapsed = 0.0f;
 
+    iterations = 100;
+    struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
         util::GRError(
@@ -422,10 +426,13 @@ void RunTests(
                                max_queue_sizing),
             "BFS Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
+        gettimeofday(&start, NULL);
         util::GRError(
             bfs_enactor.template Enact<Problem>(context, csr_problem, src,
                                                 max_grid_size, traversal_mode),
             "BFS Problem Enact Failed", __FILE__, __LINE__);
+        gettimeofday(&end, NULL);
+        std::cerr << "[BFS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         gpu_timer.Stop();
 
         elapsed += gpu_timer.ElapsedMillis();
@@ -681,6 +688,8 @@ void RunTests(
  ******************************************************************************/
 int main( int argc, char** argv)
 {
+    EvqueueCreate(2);
+
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -770,5 +779,6 @@ int main( int argc, char** argv)
         fprintf(stderr, "Unspecified graph type\n");
         return 1;
     }
+    EvqueueDestroy();
     return 0;
 }

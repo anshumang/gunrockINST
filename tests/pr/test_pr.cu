@@ -18,6 +18,7 @@
 #include <vector>
 #include <iostream>
 #include <cstdlib>
+#include <sys/time.h>
 
 // Utilities and correctness-checking
 #include <gunrock/util/test_utils.cuh>
@@ -29,6 +30,8 @@
 #include <gunrock/app/pr/pr_enactor.cuh>
 #include <gunrock/app/pr/pr_problem.cuh>
 #include <gunrock/app/pr/pr_functor.cuh>
+
+#include "EvqueueManager.h"
 
 // Operator includes
 #include <gunrock/oprtr/advance/kernel.cuh>
@@ -42,6 +45,7 @@
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/page_rank.hpp>
 
+//#include "cupti_trace.hpp"
 
 using namespace gunrock;
 using namespace gunrock::util;
@@ -292,6 +296,9 @@ void SimpleReferencePr(
  * @param[in] context CudaContext for moderngpu to use
  *
  */
+
+EvqueueManager *evqm;
+
 template <
     typename VertexId,
     typename Value,
@@ -344,19 +351,31 @@ void RunTests(
 
     float elapsed = 0.0f;
 
+    iterations = 100;
+    struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
+        fprintf(stderr, "iter %d\n", iter);
         util::GRError(
             csr_problem->Reset(src, delta, error, pr_enactor.GetFrontierType()),
             "pr Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
+        gettimeofday(&start, NULL);
         util::GRError(
             pr_enactor.template Enact<Problem>(
                 context, csr_problem, max_iter, traversal_mode, max_grid_size),
             "pr Problem Enact Failed", __FILE__, __LINE__);
+        gettimeofday(&end, NULL);
+        std::cerr << "[PR] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         gpu_timer.Stop();
         elapsed += gpu_timer.ElapsedMillis();
+        //read_cupti_trace();
+        if(iter % 1 == 0)
+        {
+           EvqueueSynch();
+        }
     }
+    evqm->synch();
     elapsed /= iterations;
 
     pr_enactor.GetStatistics(total_queued, avg_duty, num_iter);
@@ -372,11 +391,12 @@ void RunTests(
         total_pr += h_rank[i];
     }
 
+    reference_check = reference_rank;
     //
     // Compute reference CPU PR solution for source-distance
     //
-    if (reference_check != NULL && total_pr > 0)
-    {
+    //if (reference_check != NULL && total_pr > 0)
+    //{
         printf("Computing reference value ...\n");
         SimpleReferencePr(
             graph,
@@ -387,14 +407,14 @@ void RunTests(
             max_iter,
             !g_undirected);
         printf("\n");
-    }
+    //}
 
     // Verify the result
-    if (reference_check != NULL && total_pr > 0)
-    {
+    //if (reference_check != NULL && total_pr > 0)
+    //{
         printf("Validity: ");
         CompareResults(h_rank, reference_check, graph.nodes, true);
-    }
+    //}
 
     // Display Solution
     DisplaySolution(h_node_id, h_rank, graph.nodes);
@@ -500,6 +520,10 @@ void RunTests(
 
 int main( int argc, char** argv)
 {
+    //init_cupti_trace();    
+
+    EvqueueCreate(2);
+
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -566,5 +590,6 @@ int main( int argc, char** argv)
         fprintf(stderr, "Unspecified graph type\n");
         return 1;
     }
+    EvqueueDestroy();
     return 0;
 }
