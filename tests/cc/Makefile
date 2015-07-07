@@ -39,7 +39,8 @@ SM_TARGETS = $(GEN_SM35)
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
 BOOST_INC = "../../../boost_1_53_0"
 MGPU_INC = "../../externals/moderngpu/include"
-INC = -I$(CUDA_INC) -I$(BOOST_INC) -I$(MGPU_INC) -I.. -I../..
+CUPTI_INC = "$(shell dirname $(NVCC))/../extras/CUPTI/include"
+INC = -I$(CUDA_INC) -I$(BOOST_INC) -I$(MGPU_INC) -I$(CUPTI_INC) -I.. -I../.. -I/opt/data1/share/users/anshuman/evqueue-core/include -I/opt/data1/share/users/anshuman/nanomsg/src
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -100,7 +101,7 @@ test: bin/test_cc_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_cc_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_cc.cu ../../gunrock/util/test_utils.cu ../../gunrock/util/error_utils.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cc_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_cc.cu ../../gunrock/util/test_utils.cu ../../gunrock/util/error_utils.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cc_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_cc.cu ../../gunrock/util/test_utils.cu ../../gunrock/util/error_utils.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 /opt/data1/share/users/anshuman/evqueue-core/build-nanomsg/libevqueue_client.so /usr/local/cuda/extras/CUPTI/lib64/libcupti.so
 
 #-------------------------------------------------------------------------------
 # Clean

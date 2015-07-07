@@ -297,8 +297,6 @@ void SimpleReferencePr(
  *
  */
 
-EvqueueManager *evqm;
-
 template <
     typename VertexId,
     typename Value,
@@ -355,7 +353,6 @@ void RunTests(
     struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
-        fprintf(stderr, "iter %d\n", iter);
         util::GRError(
             csr_problem->Reset(src, delta, error, pr_enactor.GetFrontierType()),
             "pr Problem Data Reset Failed", __FILE__, __LINE__);
@@ -369,13 +366,11 @@ void RunTests(
         std::cerr << "[PR] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         gpu_timer.Stop();
         elapsed += gpu_timer.ElapsedMillis();
-        //read_cupti_trace();
         if(iter % 1 == 0)
         {
            EvqueueSynch();
         }
     }
-    evqm->synch();
     elapsed /= iterations;
 
     pr_enactor.GetStatistics(total_queued, avg_duty, num_iter);

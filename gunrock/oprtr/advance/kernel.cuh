@@ -27,6 +27,7 @@
 #include <moderngpu.cuh>
 
 #include <sys/time.h>
+#include <cstdlib>
 
 #include "EvqueueManager.h"
 
@@ -40,6 +41,19 @@ unsigned int h_yield_point;
 int h_elapsed;
 unsigned int *d_yield_point_ret;
 int *d_elapsed_ret;
+int allocate;
+bool done_once=false;
+
+#define Errchk(ans) { DrvAssert((ans), __FILE__, __LINE__); }
+inline void DrvAssert( CUresult code, const char *file, int line)
+{
+    if (code != CUDA_SUCCESS) {
+        std::cout << "Error: " << code << " " <<  file << "@" << line << std::endl;
+        exit(code);
+    } else {
+        std::cout << "Success: " << file << "@" << line << std::endl;
+    }
+}
 
 namespace advance {
 /**
@@ -340,6 +354,154 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                         frontier_attribute.queue_length,
                         enactor_stats.d_node_locks_out,
                         context);
+#if 0
+                if(!done_once)
+                {
+                   done_once = true;
+                   CUmodule module;
+                   std::string path = "test_pr.ptx";
+                   std::cout << "Calling cuModuleLoad" << std::endl;
+                   CUresult code = cuModuleLoad(&module, path.c_str());
+                   if(code == CUDA_SUCCESS)
+                   {
+                       std::cout << "cuModuleLoad returned CUDA_SUCCESS" << std::endl;
+                   }
+                   CUfunction func;
+                   std::string name;
+                   //name = "RelaxPartitionedEdges2instrumented";
+                   //name = "_ZN7gunrock5oprtr20edge_map_partitioned34RelaxPartitionedEdges2instrumentedINS1_12KernelPolicyINS_3app2pr9PRProblemIiifEELi300ELb1ELi1ELi7ELi10ELi4096EEES7_NS5_27RemoveZeroDegreeNodeFunctorIiifS7_EEEEvbNT_8VertexIdEiPNSB_5SizeTEPSC_SF_PjSG_jPViSF_SF_PNT0_9DataSliceESD_SD_SD_SD_SD_NS_4util15CtaWorkProgressENSM_18KernelRuntimeStatsENS0_7advance4TYPEEbNSP_11REDUCE_TYPEENSP_9REDUCE_OPEPNSB_5ValueESU_SG_Pi";
+                   //name = "_ZN7gunrock5oprtr20edge_map_partitioned22RelaxPartitionedEdges2INS1_12KernelPolicyINS_3app2pr9PRProblemIiifEELi300ELb1ELi1ELi7ELi10ELi4096EEES7_NS5_27RemoveZeroDegreeNodeFunctorIiifS7_EEEEvbNT_8VertexIdEiPNSB_5SizeTEPSC_SF_PjSG_jPViSF_SF_PNT0_9DataSliceESD_SD_SD_SD_SD_NS_4util15CtaWorkProgressENSM_18KernelRuntimeStatsENS0_7advance4TYPEEbNSP_11REDUCE_TYPEENSP_9REDUCE_OPEPNSB_5ValueESU_";
+                   //name = "_ZN7gunrock5oprtr20edge_map_partitioned22RelaxPartitionedEdges2INS1_12KernelPolicyINS_3app2pr9PRProblemIiifEELi300ELb1ELi1ELi7ELi10ELi4096EEES7_NS5_9PRFunctorIiifS7_EEEEvbNT_8VertexIdEiPNSB_5SizeTEPSC_SF_PjSG_jPViSF_SF_PNT0_9DataSliceESD_SD_SD_SD_SD_NS_4util15CtaWorkProgressENSM_18KernelRuntimeStatsENS0_7advance4TYPEEbNSP_11REDUCE_TYPEENSP_9REDUCE_OPEPNSB_5ValueESU_";
+                   //name = "_ZN7gunrock5oprtr20edge_map_partitioned22RelaxPartitionedEdges2INS1_12KernelPolicyINS_3app2pr9PRProblemIiifEELi300ELb1ELi1ELi10ELi8ELi4096EEES7_NS5_27RemoveZeroDegreeNodeFunctorIiifS7_EEEEvbNT_8VertexIdEiPNSB_5SizeTEPSC_SF_PjSG_jPViSF_SF_PNT0_9DataSliceESD_SD_SD_SD_SD_NS_4util15CtaWorkProgressENSM_18KernelRuntimeStatsENS0_7advance4TYPEEbNSP_11REDUCE_TYPEENSP_9REDUCE_OPEPNSB_5ValueESU_";
+                   name = "_ZN7gunrock5oprtr20edge_map_partitioned22RelaxPartitionedEdges2INS1_12KernelPolicyINS_3app2pr9PRProblemIiifEELi300ELb1ELi1ELi10ELi8ELi4096EEES7_NS5_9PRFunctorIiifS7_EEEEvbNT_8VertexIdEiPNSB_5SizeTEPSC_SF_PjSG_jPViSF_SF_PNT0_9DataSliceESD_SD_SD_SD_SD_NS_4util15CtaWorkProgressENSM_18KernelRuntimeStatsENS0_7advance4TYPEEbNSP_11REDUCE_TYPEENSP_9REDUCE_OPEPNSB_5ValueESU_";
+
+                   code = cuModuleGetFunction(&func, module, name.c_str());
+                   if(code == CUDA_SUCCESS)
+                   {
+                       std::cout << "cuModuleGetFunction returned CUDA_SUCCESS" << std::endl;
+                   }
+                   else
+                   {
+                       std::cout << "cuModuleGetFunction returned " << code << std::endl;
+                   }
+                   void **kernel_parameters = new void*[26];
+                   //for(int i=0; i<26; i++)
+                   //{
+                      std::cout << "frontier_attribute.queue_reset " << frontier_attribute.queue_reset << " " << sizeof(frontier_attribute.queue_reset) << std::endl;
+                      kernel_parameters[0] = new char[sizeof(frontier_attribute.queue_reset)];
+                      std::memcpy(kernel_parameters[0], &frontier_attribute.queue_reset, sizeof(frontier_attribute.queue_reset));
+                      
+                      std::cout << "frontier_attribute.queue_index " << frontier_attribute.queue_index << " " << sizeof(frontier_attribute.queue_index) << std::endl;
+                      kernel_parameters[1] = new char[sizeof(frontier_attribute.queue_index)];
+                      std::memcpy(kernel_parameters[1], &frontier_attribute.queue_index, sizeof(frontier_attribute.queue_reset));
+
+                      std::cout << "enactor_stats.iteration " << enactor_stats.iteration << " " << sizeof(enactor_stats.iteration) << std::endl;
+                      kernel_parameters[2] = new char[sizeof(frontier_attribute.queue_reset)];
+                      std::memcpy(kernel_parameters[2], &frontier_attribute.queue_reset, sizeof(frontier_attribute.queue_reset));
+
+                      std::cout << "d_row_offsets " << std::hex << d_row_offsets << " " << std::dec << sizeof(d_row_offsets) << std::endl;
+                      kernel_parameters[3] = new char[sizeof(d_row_offsets)];
+                      std::memcpy(kernel_parameters[3], &d_row_offsets, sizeof(d_row_offsets));
+
+                      std::cout << "d_column_indices " << std::hex << d_column_indices << " " << std::dec << sizeof(d_column_indices) << std::endl;
+                      kernel_parameters[4] = new char[sizeof(d_column_indices)];
+                      std::memcpy(kernel_parameters[4], &d_column_indices, sizeof(d_column_indices));
+
+                      std::cout << "d_row_indices " << std::hex << d_row_indices << " " << std::dec << sizeof(d_row_indices) << std::endl;
+                      kernel_parameters[5] = new char[sizeof(d_row_indices)];
+                      std::memcpy(kernel_parameters[5], &d_row_indices, sizeof(d_row_indices));
+
+                      std::cout << "&partitioned_scanned_edges[1] " << &partitioned_scanned_edges[1] << std::hex << " " << std::dec << sizeof(void*) << std::endl;
+                      kernel_parameters[6] = new char[sizeof(void*)];
+                      void *temp = &partitioned_scanned_edges[1];
+                      std::memcpy(kernel_parameters[6], &temp, sizeof(void*));
+
+                      std::cout << "enactor_stats.d_node_locks_out " << enactor_stats.d_node_locks_out << " " << sizeof(enactor_stats.d_node_locks_out) << std::endl;
+                      kernel_parameters[7] = new char[sizeof(enactor_stats.d_node_locks_out)];
+                      std::memcpy(kernel_parameters[7], &enactor_stats.d_node_locks_out, sizeof(enactor_stats.d_node_locks_out));
+
+                      int temp_val = KernelPolicy::LOAD_BALANCED::BLOCKS;
+                      std::cout << "KernelPolicy::LOAD_BALANCED::BLOCKS " << KernelPolicy::LOAD_BALANCED::BLOCKS << " " << sizeof(temp_val) << std::endl;
+                      kernel_parameters[8] = new char[sizeof(temp_val)];
+                      std::memcpy(kernel_parameters[8], &temp_val, sizeof(temp_val));
+
+                      std::cout << "d_done " << std::hex << d_done << " " << std::dec << sizeof(d_done) << std::endl;
+                      kernel_parameters[9] = new char[sizeof(d_done)];
+                      std::memcpy(kernel_parameters[9], &d_done, sizeof(d_done));
+
+                      std::cout << "d_in_key_queue " << std::hex << d_in_key_queue << " " << std::dec << sizeof(d_in_key_queue) << std::endl;
+                      kernel_parameters[10] = new char[sizeof(d_in_key_queue)];
+                      std::memcpy(kernel_parameters[10], &d_in_key_queue, sizeof(d_in_key_queue));
+
+                      std::cout << "d_out_key_queue " << std::hex << d_out_key_queue << " " << std::dec << sizeof(d_out_key_queue) << std::endl;
+                      kernel_parameters[11] = new char[sizeof(d_out_key_queue)];
+                      std::memcpy(kernel_parameters[11], &d_out_key_queue, sizeof(d_out_key_queue));
+
+                      kernel_parameters[12] = new char[sizeof(data_slice)];
+                      std::memcpy(kernel_parameters[12], &data_slice, sizeof(data_slice));
+
+                      kernel_parameters[13] = new char[sizeof(frontier_attribute.queue_length)];
+                      std::memcpy(kernel_parameters[13], &frontier_attribute.queue_length, sizeof(frontier_attribute.queue_length));
+
+                      kernel_parameters[14] = new char[sizeof(output_queue_len)];
+                      std::memcpy(kernel_parameters[14], &output_queue_len, sizeof(output_queue_len));
+
+                      kernel_parameters[15] = new char[sizeof(split_val)];
+                      std::memcpy(kernel_parameters[15], &split_val, sizeof(split_val));
+
+                      kernel_parameters[16] = new char[sizeof(max_in)];
+                      std::memcpy(kernel_parameters[16], &max_in, sizeof(max_in));
+
+                      kernel_parameters[17] = new char[sizeof(max_out)];
+                      std::memcpy(kernel_parameters[17], &max_out, sizeof(max_out));
+
+                      kernel_parameters[18] = new char[sizeof(work_progress)];
+                      std::memcpy(kernel_parameters[18], &work_progress, sizeof(work_progress));
+
+                      kernel_parameters[19] = new char[sizeof(enactor_stats.advance_kernel_stats)];
+                      std::memcpy(kernel_parameters[19], &enactor_stats.advance_kernel_stats, sizeof(enactor_stats.advance_kernel_stats));
+
+                      int temp_val2 = ADVANCE_TYPE;
+                      kernel_parameters[20] = new char[sizeof(int)];
+                      std::memcpy(kernel_parameters[20], &temp_val2, sizeof(int));
+
+                      kernel_parameters[21] = new char[sizeof(inverse_graph)];
+                      std::memcpy(kernel_parameters[21], &inverse_graph, sizeof(inverse_graph));
+
+                      int temp_val3 = R_TYPE;
+                      kernel_parameters[22] = new char[sizeof(int)];
+                      std::memcpy(kernel_parameters[22], &temp_val3, sizeof(int));
+
+                      int temp_val4 = R_OP;
+                      kernel_parameters[23] = new char[sizeof(int)];
+                      std::memcpy(kernel_parameters[23], &temp_val4, sizeof(int));
+
+                      kernel_parameters[24] = new char[sizeof(d_value_to_reduce)];
+                      std::memcpy(kernel_parameters[24], &d_value_to_reduce, sizeof(d_value_to_reduce));
+
+                      kernel_parameters[25] = new char[sizeof(d_reduce_frontier)];
+                      std::memcpy(kernel_parameters[25], &d_reduce_frontier, sizeof(d_reduce_frontier));
+
+                   //}
+                   
+		      cudaDeviceSynchronize();
+		      gettimeofday(&start, NULL);
+                   code = cuLaunchKernel(func, 384, 52, 1, 256, 1, 1, 1024, 0, kernel_parameters, NULL);
+                   if(code == CUDA_SUCCESS)
+                   {
+                       std::cout << "cuLaunchKernel returned CUDA_SUCCESS" << std::endl;
+                   }
+                   else
+                   {
+                       std::cout << "cuLaunchKernel returned " << code << std::endl;
+                   }
+                   cudaDeviceSynchronize();
+		   gettimeofday(&end, NULL);
+		   std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                   std::exit(-1);
+                }
+#endif
+                /*
                 cudaDeviceSynchronize();
                 gettimeofday(&start, NULL);
                 gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
@@ -373,17 +535,28 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 		cudaDeviceSynchronize();
 		gettimeofday(&end, NULL);
 		std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                */
+                
                 unsigned long grid[3], block[3];
                 grid[0] = num_block; grid[1] = 1; grid[2] = 1;
                 block[0] = KernelPolicy::LOAD_BALANCED::THREADS; block[1] = 1; block[2] = 1;
                 KernelIdentifier kid("RelaxPartitionedEdges2", grid, block);
-                //EvqueueLaunch(kid);
+                unsigned long have_run_for=0;
+                //EvqueueLaunch(kid, have_run_for);
 		unsigned int launch_ctr = 0;
+                if(allocate == 0)
+                {
+                cudaMalloc(&d_yield_point_ret, sizeof(unsigned int));
+                cudaMalloc(&d_elapsed_ret, sizeof(int));
+                allocate = 1;
+                }
 		while(h_yield_point < grid[0]*grid[1]-1)
 		{
-                gettimeofday(&start, NULL);
-                cudaDeviceSynchronize();
-                gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
+                //EvqueueLaunch(kid, have_run_for);
+                unsigned int allotted_slice=1000000000;
+                //cudaDeviceSynchronize();
+                //gettimeofday(&start, NULL);
+                /*gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
                 <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
                                         frontier_attribute.queue_reset,
                                         frontier_attribute.queue_index,
@@ -410,15 +583,50 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                                         R_TYPE,
                                         R_OP,
                                         d_value_to_reduce,
-                                        d_reduce_frontier);
-                cudaDeviceSynchronize();
-		gettimeofday(&end, NULL);
-		launch_ctr++;
-		std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                                        d_reduce_frontier, 
+                                        allotted_slice,
+                                        d_yield_point_ret, 
+                                        d_elapsed_ret);*/
+                gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
+                <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
+                                        frontier_attribute.queue_reset,
+                                        frontier_attribute.queue_index,
+                                        enactor_stats.iteration,
+                                        d_row_offsets,
+                                        d_column_indices,
+                                        d_row_indices,
+                                        &partitioned_scanned_edges[1],
+                                        enactor_stats.d_node_locks_out,
+                                        KernelPolicy::LOAD_BALANCED::BLOCKS,
+                                        d_done,
+                                        d_in_key_queue,
+                                        d_out_key_queue,
+                                        data_slice,
+                                        frontier_attribute.queue_length,
+                                        output_queue_len,
+                                        split_val,
+                                        max_in,
+                                        max_out,
+                                        work_progress,
+                                        enactor_stats.advance_kernel_stats,
+                                        ADVANCE_TYPE,
+                                        inverse_graph,
+                                        R_TYPE,
+                                        R_OP,
+                                        d_value_to_reduce,
+                                        d_reduce_frontier); 
+                break;
+                //cudaDeviceSynchronize();
+		//gettimeofday(&end, NULL);
+		//launch_ctr++;
+		//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 		cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+		//gettimeofday(&end, NULL);
 		cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
-		std::cout << launch_ctr << " => " << h_yield_point << " " << h_elapsed << std::endl;
+		//std::cout << launch_ctr << " => " << h_yield_point << " " << h_elapsed << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                have_run_for=h_yield_point;
                 }
+                h_yield_point = 0;
 
                 //util::DisplayDeviceResults(d_out_key_queue, output_queue_len);
             }

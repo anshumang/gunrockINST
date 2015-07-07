@@ -270,6 +270,8 @@ void RunTests(
 
     float elapsed = 0.0f;
 
+    iterations = 10;
+
     for (int iter = 0; iter < iterations; ++iter)
     {
         util::GRError(
@@ -283,7 +285,7 @@ void RunTests(
         gpu_timer.Stop();
 
         elapsed += gpu_timer.ElapsedMillis();
-        // printf("iteration %d, time: %.5f\n", iter+1, gpu_timer.ElapsedMillis());
+        printf("iteration %d, time: %.5f\n", iter+1, gpu_timer.ElapsedMillis());
     }
     elapsed /= iterations;
 

@@ -140,7 +140,7 @@ void DisplayDeviceResults(
     // Display data
     printf("\n\nData:\n");
     for (int i = 0; i < num_elements; i++) {
-        PrintValue(h_data[i]);
+        //PrintValue(h_data[i]);
         printf(", ");
     }
     printf("\n\n");

@@ -384,6 +384,7 @@ void RunTests(
     //
     // Compute reference CPU BC solution for source-distance
     //
+    reference_check_bc_values = NULL;
     if (reference_check_bc_values != NULL) {
         if (ref_filename.empty()) {
             printf("Computing reference value ...\n");
@@ -471,6 +472,7 @@ void RunTests(
                        true);
         printf("\n");
     }
+    reference_check_sigmas = NULL;
     if (reference_check_sigmas != NULL) {
         printf("Validity Sigma: ");
         CompareResults(h_sigmas, reference_check_sigmas, graph.nodes, true);

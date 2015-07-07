@@ -141,7 +141,10 @@ struct Dispatch
                                 gunrock::oprtr::advance::REDUCE_TYPE R_TYPE,
                                 gunrock::oprtr::advance::REDUCE_OP R_OP,
                                 Value *&d_value_to_reduce,
-                                Value *&d_reduce_frontier)
+                                Value *&d_reduce_frontier,
+                                unsigned int allotted_slice,
+                                unsigned int *d_ret1,
+                                int *d_ret2)
     {
     }
 
@@ -555,6 +558,86 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                                         kernel_stats.Flush();
                                     }
                                 }
+    //static __device__ __forceinline__ bool yield(unsigned int *d_ret1, int *d_ret2)
+    static __device__ bool yield(unsigned int *d_ret1, int *d_ret2, unsigned int allotted_slice)
+    {
+	__shared__ bool yield;
+	int elapsed = 0;
+	unsigned long long int start_clock = clock64();
+	int mysmid = __smid();
+	if(threadIdx.x == 0)
+	{
+		if(blockIdx.x + blockIdx.y * gridDim.x < 15)
+		{
+			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
+			{
+				atomicExch(&d_zero_clock[mysmid], start_clock);
+				yield = false;
+			}
+			else
+			{
+				elapsed = start_clock - d_zero_clock[mysmid];
+				if(elapsed < 1000) /*Less than 1 us should include all blocks in a dispatch set*/
+				{
+					yield = false;
+					atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
+					atomicMax(&d_elapsed, elapsed);
+				}
+				else
+				{
+					yield = true;
+				}
+			}
+		}
+		else
+		{  
+			if(blockIdx.x + blockIdx.y * gridDim.x < d_yield_point_persist)
+			{
+				yield = true;
+			}
+			else
+			{
+				elapsed = start_clock - d_zero_clock[mysmid];
+				if(elapsed >= /*20000000*/allotted_slice)
+				{
+					yield = true;
+				}
+				else
+				{
+					yield = false;
+					atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
+					atomicMax(&d_elapsed, elapsed);
+				}
+			}
+			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
+			{   
+				unsigned int val = atomicExch(&d_yield_point, 0);
+				if(val == gridDim.x * gridDim.y - 1)
+					atomicExch(&d_yield_point_persist, 0);
+				else
+					atomicExch(&d_yield_point_persist, val);
+				*d_ret1 = val;
+				val = atomicExch(&d_elapsed, 0);
+				*d_ret2 = val;
+				for(int i=0; i<15; i++)
+				{
+					atomicExch(&d_clock_initialized[i],0);
+					unsigned int val = atomicExch(&d_clock_initialized[i],0);
+				}
+			}
+		}
+	}
+	__syncthreads();
+	if(yield==true)
+	{
+		return true;
+	}
+        else
+        {
+                return false;
+        }
+
+    }
     static __device__ __forceinline__ uint32_t __smid()
     {
 	    uint32_t smid;
@@ -588,7 +671,10 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                                 gunrock::oprtr::advance::REDUCE_TYPE R_TYPE,
                                 gunrock::oprtr::advance::REDUCE_OP R_OP,
                                 Value *&d_value_to_reduce,
-                                Value *&d_reduce_frontier)
+                                Value *&d_reduce_frontier,
+                                unsigned int allotted_slice,
+                                unsigned int *d_ret1,
+                                int *d_ret2)
 
                                 {
                                 #if 0
@@ -662,6 +748,9 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                                       return;
                                     }
                                   #endif
+                                  if(yield(d_ret1, d_ret2, allotted_slice))
+                                    return;
+#if 0
 __shared__ bool yield;
   int elapsed = 0;
   unsigned long long int start_clock = clock64();
@@ -699,7 +788,7 @@ __shared__ bool yield;
         else
         {
                 elapsed = start_clock - d_zero_clock[mysmid];
-                if(elapsed >= 10000000)
+                if(elapsed >= allotted_slice/*20000000*/)
                 {
                         yield = true;
                 }
@@ -717,9 +806,9 @@ __shared__ bool yield;
 		    atomicExch(&d_yield_point_persist, 0);
 	    else
 		    atomicExch(&d_yield_point_persist, val);
-            //*d_ret1 = val;
+            *d_ret1 = val;
             val = atomicExch(&d_elapsed, 0);
-            //*d_ret2 = val;
+            *d_ret2 = val;
             for(int i=0; i<15; i++)
             {
                     atomicExch(&d_clock_initialized[i],0);
@@ -733,6 +822,7 @@ __shared__ bool yield;
   {
           return;
   }
+#endif
                                     if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0 && blockIdx.x == 0)) {
                                         kernel_stats.MarkStart();
                                     }
@@ -1445,7 +1535,10 @@ void RelaxPartitionedEdges2instrumented(
         gunrock::oprtr::advance::REDUCE_TYPE R_TYPE = gunrock::oprtr::advance::EMPTY,
         gunrock::oprtr::advance::REDUCE_OP R_OP = gunrock::oprtr::advance::NONE,
         typename KernelPolicy::Value            *d_value_to_reduce = NULL,
-        typename KernelPolicy::Value            *d_reduce_frontier = NULL)
+        typename KernelPolicy::Value            *d_reduce_frontier = NULL,
+        unsigned int allotted_slice=1000000,
+        unsigned int *d_ret1 = NULL,
+        int *d_ret2 = NULL)
 {
     Dispatch<KernelPolicy, ProblemData, Functor>::RelaxPartitionedEdges2instrumented(
             queue_reset,
@@ -1473,7 +1566,10 @@ void RelaxPartitionedEdges2instrumented(
             R_TYPE,
             R_OP,
             d_value_to_reduce,
-            d_reduce_frontier);
+            d_reduce_frontier,
+            allotted_slice,
+            d_ret1,
+            d_ret2);
 }
 /**
  * @brief Kernel entry for relax light edge function
