@@ -542,90 +542,150 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                 block[0] = KernelPolicy::LOAD_BALANCED::THREADS; block[1] = 1; block[2] = 1;
                 KernelIdentifier kid("RelaxPartitionedEdges2", grid, block);
                 unsigned long have_run_for=0;
-                //EvqueueLaunch(kid, have_run_for);
-		unsigned int launch_ctr = 0;
                 if(allocate == 0)
                 {
                 cudaMalloc(&d_yield_point_ret, sizeof(unsigned int));
                 cudaMalloc(&d_elapsed_ret, sizeof(int));
                 allocate = 1;
                 }
+                long service_id = -1, service_id_dummy = -1;
+                h_yield_point = 0;
+                h_elapsed = 0;
+		bool yield_global = false, yield_global_select = false, yield_local = true, yield_local_select = false;
+                if(true)
+                {
+                    yield_global_select = true;
+                    yield_local_select = true;
+                }
 		while(h_yield_point < grid[0]*grid[1]-1)
 		{
-                //EvqueueLaunch(kid, have_run_for);
-                unsigned int allotted_slice=1000000000;
-                //cudaDeviceSynchronize();
-                //gettimeofday(&start, NULL);
-                /*gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
-                <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
-                                        frontier_attribute.queue_reset,
-                                        frontier_attribute.queue_index,
-                                        enactor_stats.iteration,
-                                        d_row_offsets,
-                                        d_column_indices,
-                                        d_row_indices,
-                                        &partitioned_scanned_edges[1],
-                                        enactor_stats.d_node_locks_out,
-                                        KernelPolicy::LOAD_BALANCED::BLOCKS,
-                                        d_done,
-                                        d_in_key_queue,
-                                        d_out_key_queue,
-                                        data_slice,
-                                        frontier_attribute.queue_length,
-                                        output_queue_len,
-                                        split_val,
-                                        max_in,
-                                        max_out,
-                                        work_progress,
-                                        enactor_stats.advance_kernel_stats,
-                                        ADVANCE_TYPE,
-                                        inverse_graph,
-                                        R_TYPE,
-                                        R_OP,
-                                        d_value_to_reduce,
-                                        d_reduce_frontier, 
-                                        allotted_slice,
-                                        d_yield_point_ret, 
-                                        d_elapsed_ret);*/
-                gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
-                <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
-                                        frontier_attribute.queue_reset,
-                                        frontier_attribute.queue_index,
-                                        enactor_stats.iteration,
-                                        d_row_offsets,
-                                        d_column_indices,
-                                        d_row_indices,
-                                        &partitioned_scanned_edges[1],
-                                        enactor_stats.d_node_locks_out,
-                                        KernelPolicy::LOAD_BALANCED::BLOCKS,
-                                        d_done,
-                                        d_in_key_queue,
-                                        d_out_key_queue,
-                                        data_slice,
-                                        frontier_attribute.queue_length,
-                                        output_queue_len,
-                                        split_val,
-                                        max_in,
-                                        max_out,
-                                        work_progress,
-                                        enactor_stats.advance_kernel_stats,
-                                        ADVANCE_TYPE,
-                                        inverse_graph,
-                                        R_TYPE,
-                                        R_OP,
-                                        d_value_to_reduce,
-                                        d_reduce_frontier); 
-                break;
-                //cudaDeviceSynchronize();
-		//gettimeofday(&end, NULL);
-		//launch_ctr++;
-		//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
-		cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
-		//gettimeofday(&end, NULL);
-		cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
-		//std::cout << launch_ctr << " => " << h_yield_point << " " << h_elapsed << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
-                have_run_for=h_yield_point;
-                }
+			if(yield_global)
+			{
+				if(h_yield_point == 0)
+				{
+					service_id = EvqueueLaunch(kid, have_run_for, service_id_dummy);
+					std::cout << "New " << h_yield_point << " " << service_id << std::endl;
+					assert(service_id != -1);
+				}
+				else
+				{
+					service_id_dummy = EvqueueLaunch(kid, have_run_for, service_id);
+					std::cout << "In service " << h_yield_point << " " << have_run_for << " " << service_id << std::endl;
+					assert(service_id_dummy == -1);
+				}
+				assert(service_id != -1);
+			}
+                        if(yield_local && yield_local_select)
+                        {
+				unsigned int allotted_slice=10000000; /*1000000000;*/
+				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
+					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
+							frontier_attribute.queue_reset,
+							frontier_attribute.queue_index,
+							enactor_stats.iteration,
+							d_row_offsets,
+							d_column_indices,
+							d_row_indices,
+							&partitioned_scanned_edges[1],
+							enactor_stats.d_node_locks_out,
+							KernelPolicy::LOAD_BALANCED::BLOCKS,
+							d_done,
+							d_in_key_queue,
+							d_out_key_queue,
+							data_slice,
+							frontier_attribute.queue_length,
+							output_queue_len,
+							split_val,
+							max_in,
+							max_out,
+							work_progress,
+							enactor_stats.advance_kernel_stats,
+							ADVANCE_TYPE,
+							inverse_graph,
+							R_TYPE,
+							R_OP,
+							d_value_to_reduce,
+							d_reduce_frontier, 
+							allotted_slice,
+							d_yield_point_ret, 
+							d_elapsed_ret);
+				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+
+                        }
+			else if(yield_global && yield_global_select && service_id != 10000000) /*yield needed*/
+			{
+				unsigned int allotted_slice=10000000; /*1000000000;*/
+				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
+					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
+							frontier_attribute.queue_reset,
+							frontier_attribute.queue_index,
+							enactor_stats.iteration,
+							d_row_offsets,
+							d_column_indices,
+							d_row_indices,
+							&partitioned_scanned_edges[1],
+							enactor_stats.d_node_locks_out,
+							KernelPolicy::LOAD_BALANCED::BLOCKS,
+							d_done,
+							d_in_key_queue,
+							d_out_key_queue,
+							data_slice,
+							frontier_attribute.queue_length,
+							output_queue_len,
+							split_val,
+							max_in,
+							max_out,
+							work_progress,
+							enactor_stats.advance_kernel_stats,
+							ADVANCE_TYPE,
+							inverse_graph,
+							R_TYPE,
+							R_OP,
+							d_value_to_reduce,
+							d_reduce_frontier, 
+							allotted_slice,
+							d_yield_point_ret, 
+							d_elapsed_ret);
+				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+				have_run_for+=h_elapsed;
+			}
+			else /*first run of this kernel, so don't yield*/
+			{
+				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
+					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
+							frontier_attribute.queue_reset,
+							frontier_attribute.queue_index,
+							enactor_stats.iteration,
+							d_row_offsets,
+							d_column_indices,
+							d_row_indices,
+							&partitioned_scanned_edges[1],
+							enactor_stats.d_node_locks_out,
+							KernelPolicy::LOAD_BALANCED::BLOCKS,
+							d_done,
+							d_in_key_queue,
+							d_out_key_queue,
+							data_slice,
+							frontier_attribute.queue_length,
+							output_queue_len,
+							split_val,
+							max_in,
+							max_out,
+							work_progress,
+							enactor_stats.advance_kernel_stats,
+							ADVANCE_TYPE,
+							inverse_graph,
+							R_TYPE,
+							R_OP,
+							d_value_to_reduce,
+							d_reduce_frontier); 
+				break;
+			}
+			//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+			//std::cout << h_yield_point << " " << h_elapsed << std::endl;
+		}
                 h_yield_point = 0;
 
                 //util::DisplayDeviceResults(d_out_key_queue, output_queue_len);
