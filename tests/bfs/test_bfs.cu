@@ -392,6 +392,55 @@ void RunTests(
                       num_gpus),
                   "Problem BFS Initialization Failed", __FILE__, __LINE__);
 
+    Stats *stats = new Stats("GPU BFS");
+
+    long long           total_queued = 0;
+    VertexId            search_depth = 0;
+    double              avg_duty = 0.0;
+
+    // Perform BFS
+    GpuTimer gpu_timer;
+
+    float elapsed = 0.0f;
+
+    iterations = 100000;
+    struct timeval start, end;
+    for (int iter = 0; iter < iterations; ++iter)
+    {
+        std::cerr << "Iteration " << iter << std::endl;
+        util::GRError(
+            csr_problem->Reset(src, bfs_enactor.GetFrontierType(),
+                               max_queue_sizing),
+            "BFS Problem Data Reset Failed", __FILE__, __LINE__);
+        gpu_timer.Start();
+        if(iter%100==0)
+        {
+        gettimeofday(&start, NULL);
+        }
+        util::GRError(
+            bfs_enactor.template Enact<Problem>(context, csr_problem, src,
+                                                max_grid_size, traversal_mode),
+            "BFS Problem Enact Failed", __FILE__, __LINE__);
+        if(iter%100==99)
+        {
+        gettimeofday(&end, NULL);
+        std::cerr << "[BFS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
+        }
+        gpu_timer.Stop();
+
+        elapsed += gpu_timer.ElapsedMillis();
+        //EvqueueSynch();
+    }
+
+    elapsed /= iterations;
+
+    bfs_enactor.GetStatistics(total_queued, search_depth, avg_duty);
+
+    // Copy out results
+    util::GRError(
+        csr_problem->Extract(h_labels, h_preds),
+        "BFS Problem Data Extraction Failed", __FILE__, __LINE__);
+
     //
     // Compute reference CPU BFS solution for source-distance
     //
@@ -405,47 +454,6 @@ void RunTests(
             src);
         printf("\n");
     }
-
-    Stats *stats = new Stats("GPU BFS");
-
-    long long           total_queued = 0;
-    VertexId            search_depth = 0;
-    double              avg_duty = 0.0;
-
-    // Perform BFS
-    GpuTimer gpu_timer;
-
-    float elapsed = 0.0f;
-
-    iterations = 100;
-    struct timeval start, end;
-    for (int iter = 0; iter < iterations; ++iter)
-    {
-        util::GRError(
-            csr_problem->Reset(src, bfs_enactor.GetFrontierType(),
-                               max_queue_sizing),
-            "BFS Problem Data Reset Failed", __FILE__, __LINE__);
-        gpu_timer.Start();
-        gettimeofday(&start, NULL);
-        util::GRError(
-            bfs_enactor.template Enact<Problem>(context, csr_problem, src,
-                                                max_grid_size, traversal_mode),
-            "BFS Problem Enact Failed", __FILE__, __LINE__);
-        gettimeofday(&end, NULL);
-        std::cerr << "[BFS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
-        gpu_timer.Stop();
-
-        elapsed += gpu_timer.ElapsedMillis();
-    }
-
-    elapsed /= iterations;
-
-    bfs_enactor.GetStatistics(total_queued, search_depth, avg_duty);
-
-    // Copy out results
-    util::GRError(
-        csr_problem->Extract(h_labels, h_preds),
-        "BFS Problem Data Extraction Failed", __FILE__, __LINE__);
 
     // Verify the result
     if (reference_check_label != NULL)

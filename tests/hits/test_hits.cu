@@ -19,6 +19,8 @@
 #include <iostream>
 #include <cstdlib>
 
+#include "EvqueueManager.h"
+
 // Utilities and correctness-checking
 #include <gunrock/util/test_utils.cuh>
 
@@ -307,16 +309,25 @@ void RunTests(
     // Perform HITS
     GpuTimer gpu_timer;
 
+    struct timeval start, end;
+    for (int iter = 0; iter < 100; ++iter)
+    {
+        std::cout << "Iteration " << iter << std::endl;
     util::GRError(
         csr_problem->Reset(src, delta, hits_enactor.GetFrontierType()),
         "HITS Problem Data Reset Failed", __FILE__, __LINE__);
     gpu_timer.Start();
+        gettimeofday(&start, NULL);
     util::GRError(
         hits_enactor.template Enact<Problem>(
             context, csr_problem, max_iter, max_grid_size),
         "HITS Problem Enact Failed", __FILE__, __LINE__);
     gpu_timer.Stop();
+        gettimeofday(&end, NULL);
+        std::cerr << "[HITS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
 
+	EvqueueSynch();
+    }
     hits_enactor.GetStatistics(total_queued, avg_duty);
 
     double elapsed = gpu_timer.ElapsedMillis();
@@ -424,6 +435,8 @@ void RunTests(
  ******************************************************************************/
 int main( int argc, char** argv)
 {
+    EvqueueCreate(2);
+
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -504,5 +517,6 @@ int main( int argc, char** argv)
         fprintf(stderr, "Unspecified graph type\n");
         return 1;
     }
+  EvqueueDestroy();
     return 0;
 }

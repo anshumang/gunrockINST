@@ -26,14 +26,13 @@
 
 namespace gunrock {
 namespace oprtr {
-
+/*
 __device__ unsigned long long int d_zero_clock[15]; 
-//__device__ unsigned int d_yield[15][20], d_sm_idx[15];
 __device__ unsigned int d_yield_ctr, d_update;
 __device__ unsigned int d_clock_initialized[15];
 __device__ int d_elapsed;
 __device__ unsigned int d_yield_point, d_yield_point_persist;
-
+*/
 namespace edge_map_partitioned {
 
 /**

@@ -18,6 +18,8 @@
 #include <vector>
 #include <iostream>
 
+#include "EvqueueManager.h"
+
 // Utilities and correctness-checking
 #include <gunrock/util/test_utils.cuh>
 
@@ -401,9 +403,11 @@ void RunTests(
     GpuTimer gpu_timer;
 
     float elapsed = 0.0f;
-
+    iterations = 100;
+    struct timeval start, end;
     for (int iter=0; iter < iterations; ++iter)
     {
+        std::cout << "Iteration " << iter << std::endl;
         util::GRError(
             csr_problem->Reset(
                 src, dobfs_enactor.GetFrontierType(), max_queue_sizing),
@@ -414,7 +418,10 @@ void RunTests(
                 context, csr_problem, src, max_grid_size),
             "DOBFS Problem Enact Failed", __FILE__, __LINE__);
         gpu_timer.Stop();
+        gettimeofday(&end, NULL);
+        std::cerr << "[HITS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         elapsed += gpu_timer.ElapsedMillis();
+	EvqueueSynch();
     }
     elapsed /= iterations;
 
@@ -665,6 +672,8 @@ void RunTests(
  ******************************************************************************/
 int main( int argc, char** argv)
 {
+    EvqueueCreate(2);
+
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -753,5 +762,6 @@ int main( int argc, char** argv)
         fprintf(stderr, "Unspecified graph type\n");
         return 1;
     }
+  EvqueueDestroy();
     return 0;
 }

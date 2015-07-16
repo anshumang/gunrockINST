@@ -37,11 +37,13 @@ namespace gunrock {
 namespace oprtr {
 
 struct timeval start, end;
+/*
 unsigned int h_yield_point;
 int h_elapsed;
 unsigned int *d_yield_point_ret;
 int *d_elapsed_ret;
 int allocate;
+*/
 bool done_once=false;
 
 #define Errchk(ans) { DrvAssert((ans), __FILE__, __LINE__); }

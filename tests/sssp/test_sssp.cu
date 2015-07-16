@@ -436,9 +436,10 @@ void RunTests(
     GpuTimer gpu_timer;
 
     float elapsed = 0.0f;
-
+    iterations = 100;
     for (int iter = 0; iter < iterations; ++iter)
     {
+        std::cout << "Iteration " << iter << std::endl;
         util::GRError(
             csr_problem->Reset(
                 src, sssp_enactor.GetFrontierType(), queue_sizing),

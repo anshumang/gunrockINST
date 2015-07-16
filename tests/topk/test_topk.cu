@@ -23,6 +23,8 @@
 #include <fstream>
 #include <map>
 
+#include "EvqueueManager.h"
+
 // Utilities and correctness-checking
 #include <gunrock/util/test_utils.cuh>
 
@@ -242,6 +244,10 @@ void RunTests(
   // perform topk degree centrality calculations
   GpuTimer gpu_timer; // Record the kernel running time
 
+    struct timeval start, end;
+    for (int iter = 0; iter < 1000; ++iter)
+    {
+        std::cout << "Iteration " << iter << std::endl;
   // reset values in DataSlice for graph
   util::GRError(topk_problem->Reset(
     topk_enactor.GetFrontierType()),
@@ -249,6 +255,7 @@ void RunTests(
 
   gpu_timer.Start();
 
+        gettimeofday(&start, NULL);
   // launch topk enactor
   util::GRError(topk_enactor.template Enact<Problem>(
     topk_problem,
@@ -257,7 +264,10 @@ void RunTests(
     "TOPK Problem Enact Failed", __FILE__, __LINE__);
 
   gpu_timer.Stop();
-
+        gettimeofday(&end, NULL);
+        std::cerr << "[TOPK] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
+	EvqueueSynch();
+    }
   float elapsed_gpu = gpu_timer.ElapsedMillis();
   printf("==> GPU TopK Degree Centrality finished in %lf msec.\n", elapsed_gpu);
 
@@ -363,6 +373,8 @@ void RunTests(
  ******************************************************************************/
 int main(int argc, char** argv)
 {
+    EvqueueCreate(2);
+
   CommandLineArgs args(argc, argv);
 
   if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -456,6 +468,7 @@ int main(int argc, char** argv)
     return 1;
   }
 
+  EvqueueDestroy();
   return 0;
 }
 

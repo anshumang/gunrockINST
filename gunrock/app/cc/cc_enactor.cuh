@@ -24,7 +24,6 @@
 #include <gunrock/app/cc/cc_problem.cuh>
 #include <gunrock/app/cc/cc_functor.cuh>
 
-
 namespace gunrock {
 namespace app {
 namespace cc {
@@ -216,6 +215,12 @@ class CCEnactor : public EnactorBase
             CCProblem> PtrJumpUnmaskFunctor;
 
         cudaError_t retval = cudaSuccess;
+	if(allocate == 0)
+	{
+		cudaMalloc(&d_yield_point_ret, sizeof(unsigned int));
+		cudaMalloc(&d_elapsed_ret, sizeof(int));
+		allocate = 1;
+	}
 
         do {
             // Determine grid size(s)
@@ -239,7 +244,10 @@ class CCEnactor : public EnactorBase
             SizeT num_elements          = graph_slice->edges;
             bool queue_reset            = true;
 
-
+            std::cout << "Filter 1 " << num_elements/FilterPolicy::THREADS+1 << std::endl;
+	    h_yield_point = 0;
+	    h_elapsed = 0;
+#if 1
             gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, HookInitFunctor>
                 <<<num_elements/FilterPolicy::THREADS+1, FilterPolicy::THREADS>>>(
                         0,  //iteration, not used in CC
@@ -258,7 +266,39 @@ class CCEnactor : public EnactorBase
                         graph_slice->frontier_elements[selector^1],         // max_out_queue
                         this->filter_kernel_stats,
                         false);
-
+#endif
+#if 0
+            while(h_yield_point < (num_elements/FilterPolicy::THREADS+1)-1)
+            {
+	    unsigned int allotted_slice=10000000; /*1000000000;*/
+            gunrock::oprtr::filter::Kernelinstrumented<FilterPolicy, CCProblem, HookInitFunctor>
+                <<<num_elements/FilterPolicy::THREADS+1, FilterPolicy::THREADS>>>(
+                        0,  //iteration, not used in CC
+                        queue_reset,
+                        queue_index,
+                        1,
+                        num_elements,
+                        NULL,//d_done,
+                        graph_slice->frontier_queues.d_keys[selector],      // d_in_queue
+                        NULL,   //pred_queue, not used in CC
+                        graph_slice->frontier_queues.d_keys[selector^1],    // d_out_queue
+                        data_slice,
+                        NULL,   //d_visited_mask, not used in CC
+                        work_progress,
+                        graph_slice->frontier_elements[selector],           // max_in_queue
+                        graph_slice->frontier_elements[selector^1],         // max_out_queue
+                        this->filter_kernel_stats,
+                        false,
+	                allotted_slice,
+		        d_yield_point_ret, 
+		        d_elapsed_ret);
+	    cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+	    cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+	    std::cout << "host " << h_yield_point << " " << h_elapsed << std::endl;
+            if((h_yield_point==0)||(h_elapsed==0))
+               assert(0);
+            }
+#endif
             if (DEBUG && (retval = util::GRError(cudaThreadSynchronize(), "filter::Kernel Initial HookInit Operation failed", __FILE__, __LINE__))) break;
 
             // Pointer Jumping
@@ -278,6 +318,7 @@ class CCEnactor : public EnactorBase
                                 cudaMemcpyHostToDevice),
                             "CCProblem cudaMemcpy vertex_flag to d_vertex_flag failed", __FILE__, __LINE__)) return retval;
 
+                std::cout << "Filter 2 " << filter_grid_size << std::endl;
                 gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, PtrJumpFunctor>
                     <<<filter_grid_size, FilterPolicy::THREADS>>>(
                             0,
@@ -325,6 +366,7 @@ class CCEnactor : public EnactorBase
             num_elements          = graph_slice->nodes;
             queue_reset            = true;
 
+            std::cout << "Filter 3 " << filter_grid_size << std::endl;
             gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, UpdateMaskFunctor>
                 <<<filter_grid_size, FilterPolicy::THREADS>>>(
                         0,
@@ -383,6 +425,10 @@ class CCEnactor : public EnactorBase
                                     this->filter_kernel_stats,
                                     false);
                     } else {*/
+		        h_yield_point = 0;
+		        h_elapsed = 0;
+		        std::cout << "Filter 4 " << num_elements/FilterPolicy::THREADS+1 << std::endl;
+#if 1
                         gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, HookMaxFunctor>
                             <<<num_elements/FilterPolicy::THREADS+1, FilterPolicy::THREADS>>>(
                                     0,
@@ -401,6 +447,39 @@ class CCEnactor : public EnactorBase
                                     graph_slice->frontier_elements[selector^1],         // max_out_queue
                                     this->filter_kernel_stats,
                                     false);
+#endif
+#if 0
+                        while(h_yield_point < (num_elements/FilterPolicy::THREADS+1)-1)
+                        {
+				unsigned int allotted_slice=10000000; /*1000000000;*/
+                        gunrock::oprtr::filter::Kernelinstrumented<FilterPolicy, CCProblem, HookMaxFunctor>
+                            <<<num_elements/FilterPolicy::THREADS+1, FilterPolicy::THREADS>>>(
+                                    0,
+                                    queue_reset,
+                                    queue_index,
+                                    1,
+                                    num_elements,
+                                    NULL,//d_done,
+                                    graph_slice->frontier_queues.d_keys[selector],      // d_in_queue
+                                    NULL,
+                                    graph_slice->frontier_queues.d_keys[selector^1],    // d_out_queue
+                                    data_slice,
+                                    NULL,
+                                    work_progress,
+                                    graph_slice->frontier_elements[selector],           // max_in_queue
+                                    graph_slice->frontier_elements[selector^1],         // max_out_queue
+                                    this->filter_kernel_stats,
+                                    false,
+				    allotted_slice,
+				    d_yield_point_ret, 
+				    d_elapsed_ret);
+			cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+			cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+			std::cout << "host " << h_yield_point << " " << h_elapsed << std::endl;
+			if((h_yield_point==0)||(h_elapsed==0))
+			   assert(0);
+                        }
+#endif
                     //}
 
                     if (DEBUG && (retval = util::GRError(cudaThreadSynchronize(), "filter::Kernel Hook Min/Max Operation failed", __FILE__, __LINE__))) break;
@@ -440,6 +519,7 @@ class CCEnactor : public EnactorBase
                                         cudaMemcpyHostToDevice),
                                     "CCProblem cudaMemcpy vertex_flag to d_vertex_flag failed", __FILE__, __LINE__)) return retval;
 
+                        std::cout << "Filter 5 " << filter_grid_size << std::endl;
                         gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, PtrJumpMaskFunctor>
                             <<<filter_grid_size, FilterPolicy::THREADS>>>(
                                     0,
@@ -479,6 +559,7 @@ class CCEnactor : public EnactorBase
                     num_elements          = graph_slice->nodes;
                     queue_reset            = true;
 
+                    std::cout << "Filter 6 " << filter_grid_size << std::endl;
                     gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, PtrJumpUnmaskFunctor>
                         <<<filter_grid_size, FilterPolicy::THREADS>>>(
                                 0,
@@ -499,6 +580,7 @@ class CCEnactor : public EnactorBase
 
                     if (DEBUG && (retval = util::GRError(cudaThreadSynchronize(), "filter::Kernel Pointer Jumping Unmask Operation failed", __FILE__, __LINE__))) break;
 
+                    std::cout << "Filter 7 " << filter_grid_size << std::endl;
                     gunrock::oprtr::filter::Kernel<FilterPolicy, CCProblem, UpdateMaskFunctor>
                         <<<filter_grid_size, FilterPolicy::THREADS>>>(
                                 0,

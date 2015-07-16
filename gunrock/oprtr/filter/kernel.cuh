@@ -23,6 +23,13 @@
 namespace gunrock {
 namespace oprtr {
 namespace filter {
+/*
+__device__ unsigned long long int d_zero_clock[15]; 
+__device__ unsigned int d_yield_ctr, d_update;
+__device__ unsigned int d_clock_initialized[15];
+__device__ int d_elapsed;
+__device__ unsigned int d_yield_point, d_yield_point_persist;
+*/
 
 /**
  * @brief Structure for invoking CTA processing tile over all elements.
@@ -121,6 +128,27 @@ struct Dispatch
             SizeT &max_in_queue,
             SizeT &max_out_queue,
             util::KernelRuntimeStats &kernel_stats)
+    {
+      //Empty
+    }
+
+    static __device__ __forceinline__ void  Kernel2instrumented(
+            VertexId &iteration,
+            bool &queue_reset,
+            VertexId &queue_index,
+            int &num_gpus,
+            SizeT &num_elements,
+            volatile int *&d_done,
+            VertexId *&d_in_queue,
+            VertexId *&d_out_queue,
+            DataSlice *&problem,
+            util::CtaWorkProgress &work_progress,
+            SizeT &max_in_frontier,
+            SizeT &max_out_frontier,
+            util::KernelRuntimeStats &kernel_stats,
+	    unsigned int allotted_slice,
+	    unsigned int *d_ret1,
+	    int *d_ret2)
     {
       //Empty
     }
@@ -330,6 +358,186 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
             kernel_stats.Flush();
         }*/
     }
+
+    static __device__ bool yield(unsigned int *d_ret1, int *d_ret2, unsigned int allotted_slice)
+    {
+	__shared__ bool yield;
+	int elapsed = 0;
+	unsigned long long int start_clock = clock64();
+	int mysmid = __smid();
+	if(threadIdx.x == 0)
+	{
+                /*if(blockIdx.x + blockIdx.y * gridDim.x == 0)
+                {
+                    printf("yield %d %d\n", *d_ret1, *d_ret2);
+                }*/
+		if(blockIdx.x + blockIdx.y * gridDim.x < 15)
+		{
+			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
+			{
+				atomicExch(&d_zero_clock[mysmid], start_clock);
+				yield = false;
+			}
+			else
+			{
+				elapsed = start_clock - d_zero_clock[mysmid];
+				if(elapsed < 1000) /*Less than 1 us should include all blocks in a dispatch set*/
+				{
+					yield = false;
+					atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
+					atomicMax(&d_elapsed, elapsed);
+				}
+				else
+				{
+					yield = true;
+				}
+			}
+		}
+		else
+		{  
+			if(blockIdx.x + blockIdx.y * gridDim.x < d_yield_point_persist)
+			{
+				yield = true;
+			}
+			else
+			{
+				elapsed = start_clock - d_zero_clock[mysmid];
+				if(elapsed >= /*20000000*/allotted_slice)
+				{
+					yield = true;
+				}
+				else
+				{
+					yield = false;
+					atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
+					atomicMax(&d_elapsed, elapsed);
+				}
+			}
+			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
+			{   
+				unsigned int val = atomicExch(&d_yield_point, 0);
+				if(val == gridDim.x * gridDim.y - 1)
+					atomicExch(&d_yield_point_persist, 0);
+				else
+					atomicExch(&d_yield_point_persist, val);
+				*d_ret1 = val;
+				val = atomicExch(&d_elapsed, 0);
+				*d_ret2 = val;
+				for(int i=0; i<15; i++)
+				{
+					atomicExch(&d_clock_initialized[i],0);
+					unsigned int val = atomicExch(&d_clock_initialized[i],0);
+				}
+			}
+		}
+	}
+	__syncthreads();
+	if(yield==true)
+	{
+		return true;
+	}
+        else
+        {
+                return false;
+        }
+
+    }
+
+    static __device__ __forceinline__ unsigned int __smid()
+    {
+	    unsigned int smid;
+	    asm volatile("mov.u32 %0, %%smid;" : "=r"(smid));
+	    return smid;
+    }
+ 
+    static __device__ __forceinline__ void  Kernel2instrumented(
+            VertexId &iteration,
+            bool &queue_reset,
+            VertexId &queue_index,
+            int &num_gpus,
+            SizeT &num_elements,
+            volatile int *&d_done,
+            VertexId *&d_in_queue,
+            VertexId *&d_out_queue,
+            DataSlice *&problem,
+            util::CtaWorkProgress &work_progress,
+            SizeT &max_in_frontier,
+            SizeT &max_out_frontier,
+            util::KernelRuntimeStats &kernel_stats,
+	    unsigned int allotted_slice,
+	    unsigned int *d_ret1,
+	    int *d_ret2)
+    {
+      if(yield(d_ret1, d_ret2, allotted_slice))
+         return;
+      /*// Shared storage for the kernel
+        __shared__ typename KernelPolicy::SmemStorage smem_storage;
+
+        if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+            kernel_stats.MarkStart();
+        }
+    
+        // workprogress reset
+        if (queue_reset)
+        {
+            if (threadIdx.x < gunrock::util::CtaWorkProgress::COUNTERS) {
+                //Reset all counters
+                work_progress.template Reset<SizeT>();
+            }
+        }
+
+
+        // Determine work decomposition
+        if (threadIdx.x == 0) {
+            // Obtain problem size
+            if (queue_reset)
+            {
+                work_progress.template StoreQueueLength<SizeT>(num_elements, queue_index);
+            }
+            else
+            {
+                num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+
+                // Check if we previously overflowed
+                if (num_elements >= max_in_frontier) {
+                    num_elements = 0;
+                }
+
+                // Signal to host that we're done
+                if ((num_elements == 0) ||
+                        (KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::SATURATION_QUIT)))
+                {
+                    if (d_done) d_done[0] = num_elements;
+                }
+            }
+
+            // Initialize work decomposition in smem
+            smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+                    num_elements, gridDim.x);
+
+            // Reset our next outgoing queue counter to zero
+            work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+
+        }
+
+        // Barrier to protect work decomposition
+        __syncthreads();*/
+
+        SizeT my_idx = threadIdx.x + blockIdx.x * blockDim.x;
+        if (my_idx >= num_elements)
+            return;
+        //if (my_idx == 0)
+        //    printf("num elements:%d\n", num_elements);
+
+        Functor::ApplyFilter(d_in_queue[my_idx], problem, iteration);
+        d_out_queue[my_idx] = d_in_queue[my_idx];
+
+        /*if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+            kernel_stats.MarkStop();
+            kernel_stats.Flush();
+        }*/
+    }
+
 };
 
 /**
@@ -412,6 +620,75 @@ void Kernel(
     }
 }
 
+template <typename KernelPolicy, typename ProblemData, typename Functor>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
+__global__
+void Kernelinstrumented(
+    typename KernelPolicy::VertexId         iteration,
+    bool                                    queue_reset,
+    typename KernelPolicy::VertexId         queue_index,                
+    int                                     num_gpus,                  
+    typename KernelPolicy::SizeT            num_elements,             
+    volatile int                            *d_done,                 
+    typename KernelPolicy::VertexId         *d_in_queue,            
+    typename KernelPolicy::VertexId         *d_in_predecessor_queue,
+    typename KernelPolicy::VertexId         *d_out_queue,          
+    typename ProblemData::DataSlice         *problem,
+    unsigned char                           *d_visited_mask,
+    util::CtaWorkProgress                   work_progress,        
+    typename KernelPolicy::SizeT            max_in_queue,        
+    typename KernelPolicy::SizeT            max_out_queue,      
+    util::KernelRuntimeStats                kernel_stats,
+    bool                                    filtering_flag = true,
+    unsigned int allotted_slice=1000000,
+    unsigned int *d_ret1 = NULL,
+    int *d_ret2 = NULL)
+{
+    if (filtering_flag) {
+        /*if((threadIdx.x==0)&&(blockIdx.x==0))
+        {
+           printf("Kernel %d %d\n", *d_ret1, *d_ret2);
+        }*/
+        Dispatch<KernelPolicy, ProblemData, Functor>::Kernel(
+                iteration,
+                queue_reset,
+                queue_index,
+                num_gpus,
+                num_elements,
+                d_done,
+                d_in_queue,
+                d_in_predecessor_queue,
+                d_out_queue,
+                problem,
+                d_visited_mask,
+                work_progress,
+                max_in_queue,
+                max_out_queue,
+                kernel_stats);
+    } else {
+        /*if((threadIdx.x==0)&&(blockIdx.x==0))
+        {
+           printf("Kernel2instrumented %d %d\n", *d_ret1, *d_ret2);
+        }*/
+        Dispatch<KernelPolicy, ProblemData, Functor>::Kernel2instrumented(
+                iteration,
+                queue_reset,
+                queue_index,
+                num_gpus,
+                num_elements,
+                d_done,
+                d_in_queue,
+                d_out_queue,
+                problem,
+                work_progress,
+                max_in_queue,
+                max_out_queue,
+                kernel_stats,
+	        allotted_slice,
+		d_ret1,
+		d_ret2);
+    }
+}
 
 } // namespace filter
 } // namespace oprtr

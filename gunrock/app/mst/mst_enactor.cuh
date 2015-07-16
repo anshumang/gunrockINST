@@ -249,10 +249,12 @@ public:
       //int tmp_length  = 0; // used for debug purpose
       unsigned int *num_selected = new unsigned int; // used in cub select
 
+      unsigned int iteration_ctr = 0;
       //////////////////////////////////////////////////////////////////////////
       // recursive Loop for minimum spanning tree implementation
       while (graph_slice->nodes > 1) // more than 1 super-vertex
       {
+        std::cerr << ++iteration_ctr << std::endl;
         if (DEBUG) printf("\nBEGIN ITERATION: %lld #NODES: %d #EDGES: %d\n",
           enactor_stats.iteration+1, graph_slice->nodes, graph_slice->edges);
 
@@ -370,6 +372,7 @@ public:
           this->work_progress,
           context,
           gunrock::oprtr::advance::V2V);
+        std::cerr << "advance1" << std::endl;
 
         if (DEBUG && (retval = util::GRError(cudaDeviceSynchronize(),
           "advance::Kernel failed", __FILE__, __LINE__))) break;
@@ -406,6 +409,7 @@ public:
           this->work_progress,
           context,
           gunrock::oprtr::advance::V2V);
+        std::cerr << "advance2" << std::endl;
 
         if (DEBUG && (retval = util::GRError(cudaDeviceSynchronize(),
           "advance::Kernel failed", __FILE__, __LINE__))) break;
@@ -440,6 +444,7 @@ public:
           this->work_progress,
           context,
           gunrock::oprtr::advance::V2E);
+        std::cerr << "advance3" << std::endl;
 
         if (DEBUG && (retval = util::GRError(cudaDeviceSynchronize(),
           "advance::Kernel failed", __FILE__, __LINE__))) break;
@@ -474,6 +479,7 @@ public:
           this->work_progress,
           context,
           gunrock::oprtr::advance::V2E);
+        std::cerr << "advance4" << std::endl;
 
         if (DEBUG && (retval = util::GRError(cudaDeviceSynchronize(),
           "advance::Kernel failed", __FILE__, __LINE__))) break;
@@ -501,8 +507,10 @@ public:
         frontier_attribute.queue_reset  = true;
 
         vertex_flag[0] = 0;
+        unsigned int sub_iter_ctr = 0;
         while (!vertex_flag[0])
         {
+          std::cout << ++sub_iter_ctr << std::endl;
           vertex_flag[0] = 1;
           if (retval = util::GRError(cudaMemcpy(
             problem->data_slices[0]->d_vertex_flag, vertex_flag,

@@ -257,6 +257,7 @@ class BFSEnactor : public EnactorBase
             
             fflush(stdout);
             // Step through BFS iterations
+            unsigned int iteration_ctr = 0;
             
             while (done[0] < 0) {
 
@@ -346,6 +347,10 @@ class BFSEnactor : public EnactorBase
                 if (done[0] == 0) break;
 
                 // Filter
+                std::cout << "Filter " << enactor_stats.filter_grid_size << std::endl;
+                struct timeval start, end;
+                cudaDeviceSynchronize();
+                gettimeofday(&start, NULL);
                 gunrock::oprtr::filter::Kernel<FilterKernelPolicy, BFSProblem, BfsFunctor>
                 <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
                     enactor_stats.iteration+1,
@@ -363,6 +368,9 @@ class BFSEnactor : public EnactorBase
                     graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
                     graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
                     enactor_stats.filter_kernel_stats);
+                cudaDeviceSynchronize();
+                gettimeofday(&end, NULL);
+                std::cout << "Filter " << ++iteration_ctr << " " << enactor_stats.filter_grid_size << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 
                 if (DEBUG && (retval = util::GRError(cudaThreadSynchronize(), "filter_forward::Kernel failed", __FILE__, __LINE__))) break;
                 cudaEventQuery(throttle_event); // give host memory mapped visibility to GPU updates

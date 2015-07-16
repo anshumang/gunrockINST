@@ -31,6 +31,8 @@
 #include <gunrock/app/bc/bc_problem.cuh>
 #include <gunrock/app/bc/bc_functor.cuh>
 
+#include "EvqueueManager.h"
+
 // Operator includes
 #include <gunrock/oprtr/advance/kernel.cuh>
 #include <gunrock/oprtr/filter/kernel.cuh>

@@ -30,6 +30,8 @@
 #include <gunrock/app/mis/mis_problem.cuh>
 #include <gunrock/app/mis/mis_functor.cuh>
 
+#include "EvqueueManager.h"
+
 // Operator includes
 #include <gunrock/oprtr/advance/kernel.cuh>
 #include <gunrock/oprtr/filter/kernel.cuh>
@@ -203,19 +205,25 @@ void RunTests(
     GpuTimer gpu_timer;
 
     float elapsed = 0.0f;
-
+    iterations = 100;
+    struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
+        std::cout << "Iteration " << iter << std::endl;
         util::GRError(
             csr_problem->Reset(mis_enactor.GetFrontierType()),
             "MIS Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
+        gettimeofday(&start, NULL);
         util::GRError(
             mis_enactor.template Enact<Problem>(
                 context, csr_problem, max_iter, max_grid_size),
             "MIS Problem Enact Failed", __FILE__, __LINE__);
         gpu_timer.Stop();
+        gettimeofday(&end, NULL);
+        std::cerr << "[MIS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         elapsed += gpu_timer.ElapsedMillis();
+	EvqueueSynch();
     }
     elapsed /= iterations;
 
@@ -321,6 +329,8 @@ void RunTests(
 
 int main( int argc, char** argv)
 {
+    EvqueueCreate(2);
+
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -386,5 +396,6 @@ int main( int argc, char** argv)
         fprintf(stderr, "Unspecified graph type\n");
         return 1;
     }
+    EvqueueDestroy();
     return 0;
 }

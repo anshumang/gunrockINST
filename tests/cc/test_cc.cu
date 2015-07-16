@@ -29,6 +29,8 @@
 #include <gunrock/app/cc/cc_problem.cuh>
 #include <gunrock/app/cc/cc_functor.cuh>
 
+#include "EvqueueManager.h"
+
 // Operator includes
 #include <gunrock/oprtr/filter/kernel.cuh>
 
@@ -270,8 +272,9 @@ void RunTests(
 
     float elapsed = 0.0f;
 
-    iterations = 10;
+    iterations = 5000;
 
+    struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
         util::GRError(
@@ -279,9 +282,13 @@ void RunTests(
             "CC Problem Data Reset Failed", __FILE__, __LINE__);
 
         gpu_timer.Start();
+        gettimeofday(&start, NULL);
         util::GRError(
             cc_enactor.template Enact<Problem>(csr_problem, max_grid_size),
             "CC Problem Enact Failed", __FILE__, __LINE__);
+        gettimeofday(&end, NULL);
+        std::cerr << "[CC] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
+        //EvqueueSynch();
         gpu_timer.Stop();
 
         elapsed += gpu_timer.ElapsedMillis();
@@ -386,6 +393,7 @@ void RunTests(
 
 int main( int argc, char** argv)
 {
+    EvqueueCreate(2);
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))
@@ -446,5 +454,6 @@ int main( int argc, char** argv)
         fprintf(stderr, "Unspecified graph type\n");
         return 1;
     }
+    EvqueueDestroy();
     return 0;
 }
