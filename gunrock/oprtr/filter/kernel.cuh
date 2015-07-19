@@ -147,7 +147,7 @@ struct Dispatch
             SizeT &max_out_frontier,
             util::KernelRuntimeStats &kernel_stats,
 	    unsigned int allotted_slice,
-	    unsigned int *d_ret1,
+	    int *d_ret1,
 	    int *d_ret2)
     {
       //Empty
@@ -169,6 +169,29 @@ struct Dispatch
         SizeT                       &max_in_frontier,
         SizeT                       &max_out_frontier,
         util::KernelRuntimeStats    &kernel_stats)
+    {
+        // empty
+    }
+
+    static __device__ __forceinline__ void Kernelinstrumented(
+        VertexId                    &iteration,
+        bool                        &queue_reset,
+        VertexId                    &queue_index,
+        int                         &num_gpus,
+        SizeT                       &num_elements,
+        volatile int                *&d_done,
+        VertexId                    *&d_in,
+        VertexId                    *&d_pred_in,
+        VertexId                    *&d_out,
+        DataSlice                   *&problem,
+        unsigned char               *&d_visited_mask,
+        util::CtaWorkProgress       &work_progress,
+        SizeT                       &max_in_frontier,
+        SizeT                       &max_out_frontier,
+        util::KernelRuntimeStats    &kernel_stats,
+	    unsigned int allotted_slice,
+	    int *d_ret1,
+	    int *d_ret2)
     {
         // empty
     }
@@ -359,10 +382,10 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
         }*/
     }
 
-    static __device__ bool yield(unsigned int *d_ret1, int *d_ret2, unsigned int allotted_slice)
+    static __device__ bool yield(int *d_ret1, int *d_ret2, unsigned int allotted_slice)
     {
 	__shared__ bool yield;
-	int elapsed = 0;
+	int elapsed = -1;
 	unsigned long long int start_clock = clock64();
 	int mysmid = __smid();
 	if(threadIdx.x == 0)
@@ -371,8 +394,51 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                 {
                     printf("yield %d %d\n", *d_ret1, *d_ret2);
                 }*/
-		if(blockIdx.x + blockIdx.y * gridDim.x < 15)
+		if(blockIdx.x + blockIdx.y * gridDim.x < 90)
 		{
+			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
+			{
+				atomicExch(&d_zero_clock[mysmid], start_clock);
+				elapsed = start_clock - d_zero_clock[mysmid];
+                                //printf("%d %d\n", blockIdx.x, elapsed);
+                        }
+			else
+			{
+				elapsed = start_clock - d_zero_clock[mysmid];
+                                //printf("%d %d\n", blockIdx.x, elapsed);
+			}
+			if(d_yield_point_persist >= 89)
+			{
+				yield = true;
+			}
+			else
+			{
+				yield = false;
+				atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
+				atomicMax(&d_elapsed, elapsed);
+			}
+                        /*if(blockIdx.x == 0)
+                        {
+			    printf("FIRST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+                        }*/
+			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
+			{   
+                                //printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+				int val = atomicExch(&d_yield_point, 0);
+				if(val == gridDim.x * gridDim.y - 1)
+					atomicExch(&d_yield_point_persist, 0);
+				else
+					atomicExch(&d_yield_point_persist, val);
+				*d_ret1 = val;
+				val = atomicExch(&d_elapsed, 0);
+				*d_ret2 = val;
+				for(int i=0; i<15; i++)
+				{
+					atomicExch(&d_clock_initialized[i],0);
+					unsigned int val = atomicExch(&d_clock_initialized[i],0);
+				}
+			}
+                        #if 0
 			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
 			{
 				atomicExch(&d_zero_clock[mysmid], start_clock);
@@ -389,13 +455,15 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 				}
 				else
 				{
+                                        printf("FILTER %d %d %lld %lld\n", blockIdx.x, mysmid, start_clock, d_zero_clock[mysmid]);
 					yield = true;
 				}
 			}
+                        #endif
 		}
 		else
 		{  
-			if(blockIdx.x + blockIdx.y * gridDim.x < d_yield_point_persist)
+			if(blockIdx.x + blockIdx.y * gridDim.x <= d_yield_point_persist)
 			{
 				yield = true;
 			}
@@ -408,6 +476,10 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 				}
 				else
 				{
+                                        /*if(blockIdx.x < 120)
+                                        {
+                                           printf("%d %d\n", blockIdx.x, elapsed);
+                                        }*/
 					yield = false;
 					atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
 					atomicMax(&d_elapsed, elapsed);
@@ -415,7 +487,8 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 			}
 			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
 			{   
-				unsigned int val = atomicExch(&d_yield_point, 0);
+                                printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+				int val = atomicExch(&d_yield_point, 0);
 				if(val == gridDim.x * gridDim.y - 1)
 					atomicExch(&d_yield_point_persist, 0);
 				else
@@ -465,7 +538,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
             SizeT &max_out_frontier,
             util::KernelRuntimeStats &kernel_stats,
 	    unsigned int allotted_slice,
-	    unsigned int *d_ret1,
+	    int *d_ret1,
 	    int *d_ret2)
     {
       if(yield(d_ret1, d_ret2, allotted_slice))
@@ -536,6 +609,102 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
             kernel_stats.MarkStop();
             kernel_stats.Flush();
         }*/
+    }
+
+    static __device__ __forceinline__ void Kernelinstrumented(
+        VertexId                    &iteration,
+        bool                        &queue_reset,
+        VertexId                    &queue_index,
+        int                         &num_gpus,
+        SizeT                       &num_elements,
+        volatile int                *&d_done,
+        VertexId                    *&d_in,
+        VertexId                    *&d_pred_in,
+        VertexId                    *&d_out,
+        DataSlice                   *&problem,
+        unsigned char               *&d_visited_mask,
+        util::CtaWorkProgress       &work_progress,
+        SizeT                       &max_in_frontier,
+        SizeT                       &max_out_frontier,
+        util::KernelRuntimeStats    &kernel_stats,
+	    unsigned int allotted_slice,
+	    int *d_ret1,
+	    int *d_ret2)
+    {
+      if(yield(d_ret1, d_ret2, allotted_slice))
+         return;
+
+        // Shared storage for the kernel
+        __shared__ typename KernelPolicy::SmemStorage smem_storage;
+
+        if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+            kernel_stats.MarkStart();
+        }
+    
+        // workprogress reset
+        if (queue_reset)
+        {
+            if (threadIdx.x < gunrock::util::CtaWorkProgress::COUNTERS) {
+                //Reset all counters
+                work_progress.template Reset<SizeT>();
+            }
+        }
+
+
+        // Determine work decomposition
+        if (threadIdx.x == 0) {
+            // Obtain problem size
+            if (queue_reset)
+            {
+                work_progress.template StoreQueueLength<SizeT>(num_elements, queue_index);
+            }
+            else
+            {
+                num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+
+                // Check if we previously overflowed
+                if (num_elements >= max_in_frontier) {
+                    num_elements = 0;
+                }
+
+                // Signal to host that we're done
+                if ((num_elements == 0) ||
+                        (KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::SATURATION_QUIT)))
+                {
+                    if (d_done) d_done[0] = num_elements;
+                }
+            }
+
+            // Initialize work decomposition in smem
+            smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+                    num_elements, gridDim.x);
+
+            // Reset our next outgoing queue counter to zero
+            work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+
+        }
+
+        // Barrier to protect work decomposition
+        __syncthreads();
+
+        SweepPass<KernelPolicy, ProblemData, Functor>::Invoke(
+                iteration,
+                queue_index,
+                num_gpus,
+                d_in,
+                d_pred_in,
+                d_out,
+                problem,
+                d_visited_mask,
+                smem_storage,
+                work_progress,
+                smem_storage.state.work_decomposition,
+                max_out_frontier);
+
+        if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+            kernel_stats.MarkStop();
+            kernel_stats.Flush();
+        }
     }
 
 };
@@ -641,15 +810,15 @@ void Kernelinstrumented(
     util::KernelRuntimeStats                kernel_stats,
     bool                                    filtering_flag = true,
     unsigned int allotted_slice=1000000,
-    unsigned int *d_ret1 = NULL,
+    int *d_ret1 = NULL,
     int *d_ret2 = NULL)
 {
     if (filtering_flag) {
         /*if((threadIdx.x==0)&&(blockIdx.x==0))
         {
-           printf("Kernel %d %d\n", *d_ret1, *d_ret2);
+           printf("Kernelinstrumented %d %d\n", *d_ret1, *d_ret2);
         }*/
-        Dispatch<KernelPolicy, ProblemData, Functor>::Kernel(
+        Dispatch<KernelPolicy, ProblemData, Functor>::Kernelinstrumented(
                 iteration,
                 queue_reset,
                 queue_index,
@@ -664,7 +833,10 @@ void Kernelinstrumented(
                 work_progress,
                 max_in_queue,
                 max_out_queue,
-                kernel_stats);
+                kernel_stats,
+	        allotted_slice,
+		d_ret1,
+		d_ret2);
     } else {
         /*if((threadIdx.x==0)&&(blockIdx.x==0))
         {

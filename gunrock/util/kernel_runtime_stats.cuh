@@ -22,10 +22,10 @@ __device__ unsigned long long int d_zero_clock[15];
 __device__ unsigned int d_yield_ctr, d_update;
 __device__ unsigned int d_clock_initialized[15];
 __device__ int d_elapsed;
-__device__ unsigned int d_yield_point, d_yield_point_persist;
-unsigned int h_yield_point;
+__device__ int d_yield_point, d_yield_point_persist;
+int h_yield_point;
 int h_elapsed;
-unsigned int *d_yield_point_ret;
+int *d_yield_point_ret;
 int *d_elapsed_ret;
 int allocate;
 

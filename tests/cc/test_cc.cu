@@ -282,12 +282,18 @@ void RunTests(
             "CC Problem Data Reset Failed", __FILE__, __LINE__);
 
         gpu_timer.Start();
+        if(iter%50==0)
+        {
         gettimeofday(&start, NULL);
+        }
         util::GRError(
             cc_enactor.template Enact<Problem>(csr_problem, max_grid_size),
             "CC Problem Enact Failed", __FILE__, __LINE__);
+        if(iter%50==49)
+        {
         gettimeofday(&end, NULL);
         std::cerr << "[CC] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
+        }
         //EvqueueSynch();
         gpu_timer.Stop();
 

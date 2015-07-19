@@ -97,7 +97,7 @@ namespace advance {
 
 //TODO: Reduce by neighbor list now only supports LB advance mode.
 //TODO: Add a switch to enable advance+filter (like in BFS), pissibly moving idempotent ops from filter to advance?
-
+unsigned int iteration_ctr = 0;
 template <typename KernelPolicy, typename ProblemData, typename Functor>
     void LaunchKernel(
             volatile int                            *d_done,
@@ -129,10 +129,15 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
             typename KernelPolicy::Value            *d_reduced_value = NULL)
 
 {
+    ++iteration_ctr;
+    if(iteration_ctr == 13)
+       iteration_ctr = 0;
+    //std::cout << "LaunchKernel " << iteration_ctr << std::endl;
     switch (KernelPolicy::ADVANCE_MODE)
     {
         case TWC_FORWARD:
         {
+            //std::cout << "TWC_FORWARD " << iteration_ctr << std::endl;
             // Load Thread Warp CTA Forward Kernel
             gunrock::oprtr::edge_map_forward::Kernel<typename KernelPolicy::THREAD_WARP_CTA_FORWARD, ProblemData, Functor>
                 <<<enactor_stats.advance_grid_size, KernelPolicy::THREAD_WARP_CTA_FORWARD::THREADS>>>(
@@ -158,6 +163,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
         }
         case LB_BACKWARD:
         {
+            //std::cout << "LB_BACKWARD " << iteration_ctr << std::endl;
             // Load Thread Warp CTA Backward Kernel
             typedef typename ProblemData::SizeT         SizeT;
             typedef typename ProblemData::VertexId      VertexId;
@@ -241,6 +247,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
         }
         case TWC_BACKWARD:
         {
+            //std::cout << "TWC_BACKWARD " << iteration_ctr << std::endl;
             // Load Thread Warp CTA Backward Kernel
             if (frontier_attribute.selector == 1) {
                 // Edge Map
@@ -285,6 +292,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
         }
         case LB:
         {
+            //std::cout << "LB " << iteration_ctr << std::endl;
             typedef typename ProblemData::SizeT         SizeT;
             typedef typename ProblemData::VertexId      VertexId;
             typedef typename ProblemData::Value         Value;
@@ -310,6 +318,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 
             if (output_queue_len < LBPOLICY::LIGHT_EDGE_THRESHOLD)
             {
+		//std::cout << "LB LIGHT_EDGE_THRESHOLD" << iteration_ctr << std::endl;
                 gunrock::oprtr::edge_map_partitioned::RelaxLightEdges<LBPOLICY, ProblemData, Functor>
                 <<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
                         frontier_attribute.queue_reset,
@@ -338,6 +347,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
             }
             else
             {
+		//std::cout << "LB ~LIGHT_EDGE_THRESHOLD" << iteration_ctr << std::endl;
                 unsigned int split_val = (output_queue_len + KernelPolicy::LOAD_BALANCED::BLOCKS - 1) / KernelPolicy::LOAD_BALANCED::BLOCKS;
                 int num_block = KernelPolicy::LOAD_BALANCED::BLOCKS;
                 int nb = (num_block + 1 + KernelPolicy::LOAD_BALANCED::THREADS - 1)/KernelPolicy::LOAD_BALANCED::THREADS;
@@ -546,7 +556,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                 unsigned long have_run_for=0;
                 if(allocate == 0)
                 {
-                cudaMalloc(&d_yield_point_ret, sizeof(unsigned int));
+                cudaMalloc(&d_yield_point_ret, sizeof(int));
                 cudaMalloc(&d_elapsed_ret, sizeof(int));
                 allocate = 1;
                 }
@@ -554,7 +564,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                 h_yield_point = 0;
                 h_elapsed = 0;
 		bool yield_global = false, yield_global_select = false, yield_local = true, yield_local_select = false;
-                if(true)
+                if(/*iteration_ctr == 11*/true)
                 {
                     yield_global_select = true;
                     yield_local_select = true;
@@ -579,7 +589,13 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 			}
                         if(yield_local && yield_local_select)
                         {
-				unsigned int allotted_slice=10000000; /*1000000000;*/
+                                //std::cout << "Local " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
+				struct timeval start, end;
+				cudaMemcpy(d_yield_point_ret, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
+				cudaMemcpy(d_elapsed_ret, &h_elapsed, sizeof(int), cudaMemcpyHostToDevice);
+				//cudaDeviceSynchronize();
+				gettimeofday(&start, NULL);
+				unsigned int allotted_slice=128000000; /*1000000000;*/
 				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
 					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
 							frontier_attribute.queue_reset,
@@ -611,12 +627,18 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 							allotted_slice,
 							d_yield_point_ret, 
 							d_elapsed_ret);
-				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+				//cudaDeviceSynchronize();
+				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(int), cudaMemcpyDeviceToHost);
+				gettimeofday(&end, NULL);
 				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+                                assert(h_elapsed != -2);
+			        //std::cout << "advance " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << num_block << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                                h_elapsed = -2;
 
                         }
 			else if(yield_global && yield_global_select && service_id != 10000000) /*yield needed*/
 			{
+                                std::cout << "Global " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
 				unsigned int allotted_slice=10000000; /*1000000000;*/
 				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
 					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
@@ -649,12 +671,16 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 							allotted_slice,
 							d_yield_point_ret, 
 							d_elapsed_ret);
-				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(int), cudaMemcpyDeviceToHost);
 				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
 				have_run_for+=h_elapsed;
 			}
 			else /*first run of this kernel, so don't yield*/
 			{
+                                //std::cout << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
+                                //struct timeval start, end;
+                                //cudaDeviceSynchronize();
+                                //gettimeofday(&start, NULL);
 				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
 					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
 							frontier_attribute.queue_reset,
@@ -683,10 +709,14 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 							R_OP,
 							d_value_to_reduce,
 							d_reduce_frontier); 
+                                //cudaDeviceSynchronize();
+                                //gettimeofday(&end, NULL);
+				//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 				break;
 			}
 			//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 			//std::cout << h_yield_point << " " << h_elapsed << std::endl;
+                   //std::cout << h_yield_point << " " << grid[0] << " " << grid[1] << " " << grid[0]*grid[1] - 1 << " " << (h_yield_point < grid[0]*grid[1] - 1) << std::endl;
 		}
                 h_yield_point = 0;
 

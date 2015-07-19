@@ -142,7 +142,7 @@ struct Dispatch
                                 Value *&d_value_to_reduce,
                                 Value *&d_reduce_frontier,
                                 unsigned int allotted_slice,
-                                unsigned int *d_ret1,
+                                int *d_ret1,
                                 int *d_ret2)
     {
     }
@@ -557,17 +557,59 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                                         kernel_stats.Flush();
                                     }
                                 }
-    //static __device__ __forceinline__ bool yield(unsigned int *d_ret1, int *d_ret2)
-    static __device__ bool yield(unsigned int *d_ret1, int *d_ret2, unsigned int allotted_slice)
+    //static __device__ __forceinline__ bool yield(int *d_ret1, int *d_ret2)
+    static __device__ bool yield(int *d_ret1, int *d_ret2, unsigned int allotted_slice)
     {
 	__shared__ bool yield;
-	int elapsed = 0;
+	int elapsed = -1;
 	unsigned long long int start_clock = clock64();
 	int mysmid = __smid();
 	if(threadIdx.x == 0)
 	{
 		if(blockIdx.x + blockIdx.y * gridDim.x < 15)
 		{
+			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
+			{
+				atomicExch(&d_zero_clock[mysmid], start_clock);
+				elapsed = start_clock - d_zero_clock[mysmid];
+                        }
+			else
+			{
+				elapsed = start_clock - d_zero_clock[mysmid];
+			}
+			if(d_yield_point_persist >= 14)
+			{
+				yield = true;
+			}
+			else
+			{
+				yield = false;
+				atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
+				atomicMax(&d_elapsed, elapsed);
+			}
+                        /*if(blockIdx.x == 0)
+                        {
+			    printf("FIRST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+                        }*/
+			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
+			{   
+                                //printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+				int val = atomicExch(&d_yield_point, 0);
+				if(val == gridDim.x * gridDim.y - 1)
+					atomicExch(&d_yield_point_persist, 0);
+				else
+					atomicExch(&d_yield_point_persist, val);
+				*d_ret1 = val;
+				val = atomicExch(&d_elapsed, 0);
+				*d_ret2 = val;
+				for(int i=0; i<15; i++)
+				{
+					atomicExch(&d_clock_initialized[i],0);
+					unsigned int val = atomicExch(&d_clock_initialized[i],0);
+				}
+			}
+                        
+                        #if 0
 			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
 			{
 				atomicExch(&d_zero_clock[mysmid], start_clock);
@@ -584,13 +626,15 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 				}
 				else
 				{
+                                        printf("ADVANCE %d %d %lld %lld\n", blockIdx.x, mysmid, start_clock, d_zero_clock[mysmid]);
 					yield = true;
 				}
 			}
+                        #endif
 		}
 		else
 		{  
-			if(blockIdx.x + blockIdx.y * gridDim.x < d_yield_point_persist)
+			if(blockIdx.x + blockIdx.y * gridDim.x <= d_yield_point_persist)
 			{
 				yield = true;
 			}
@@ -610,7 +654,8 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 			}
 			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
 			{   
-				unsigned int val = atomicExch(&d_yield_point, 0);
+                                //printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+				int val = atomicExch(&d_yield_point, 0);
 				if(val == gridDim.x * gridDim.y - 1)
 					atomicExch(&d_yield_point_persist, 0);
 				else
@@ -672,7 +717,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                                 Value *&d_value_to_reduce,
                                 Value *&d_reduce_frontier,
                                 unsigned int allotted_slice,
-                                unsigned int *d_ret1,
+                                int *d_ret1,
                                 int *d_ret2)
 
                                 {
@@ -1536,7 +1581,7 @@ void RelaxPartitionedEdges2instrumented(
         typename KernelPolicy::Value            *d_value_to_reduce = NULL,
         typename KernelPolicy::Value            *d_reduce_frontier = NULL,
         unsigned int allotted_slice=1000000,
-        unsigned int *d_ret1 = NULL,
+        int *d_ret1 = NULL,
         int *d_ret2 = NULL)
 {
     Dispatch<KernelPolicy, ProblemData, Functor>::RelaxPartitionedEdges2instrumented(

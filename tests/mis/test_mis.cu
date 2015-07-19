@@ -205,7 +205,7 @@ void RunTests(
     GpuTimer gpu_timer;
 
     float elapsed = 0.0f;
-    iterations = 100;
+    iterations = 2000;
     struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
@@ -214,16 +214,22 @@ void RunTests(
             csr_problem->Reset(mis_enactor.GetFrontierType()),
             "MIS Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
+        if(iter%20==0)
+        {
         gettimeofday(&start, NULL);
+        }
         util::GRError(
             mis_enactor.template Enact<Problem>(
                 context, csr_problem, max_iter, max_grid_size),
             "MIS Problem Enact Failed", __FILE__, __LINE__);
         gpu_timer.Stop();
+        if(iter%20==19)
+        {
         gettimeofday(&end, NULL);
         std::cerr << "[MIS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
+        }
         elapsed += gpu_timer.ElapsedMillis();
-	EvqueueSynch();
+	//EvqueueSynch();
     }
     elapsed /= iterations;
 

@@ -407,13 +407,13 @@ void RunTests(
     struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
-        std::cerr << "Iteration " << iter << std::endl;
+        //std::cerr << "Iteration " << iter << std::endl;
         util::GRError(
             csr_problem->Reset(src, bfs_enactor.GetFrontierType(),
                                max_queue_sizing),
             "BFS Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
-        if(iter%100==0)
+        if(iter%10==0)
         {
         gettimeofday(&start, NULL);
         }
@@ -421,7 +421,7 @@ void RunTests(
             bfs_enactor.template Enact<Problem>(context, csr_problem, src,
                                                 max_grid_size, traversal_mode),
             "BFS Problem Enact Failed", __FILE__, __LINE__);
-        if(iter%100==99)
+        if(iter%10==9)
         {
         gettimeofday(&end, NULL);
         std::cerr << "[BFS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;

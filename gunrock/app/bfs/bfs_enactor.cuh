@@ -260,8 +260,11 @@ class BFSEnactor : public EnactorBase
             unsigned int iteration_ctr = 0;
             
             while (done[0] < 0) {
-
+                ++iteration_ctr;
                 // Edge Map
+                //struct timeval start, end;
+                //cudaDeviceSynchronize();
+                //gettimeofday(&start, NULL);
                 gunrock::oprtr::advance::LaunchKernel<AdvanceKernelPolicy, BFSProblem, BfsFunctor>(
                     d_done,
                     enactor_stats,
@@ -284,7 +287,9 @@ class BFSEnactor : public EnactorBase
                     this->work_progress,
                     context,
                     gunrock::oprtr::advance::V2V);
-
+                //cudaDeviceSynchronize();
+                //gettimeofday(&end, NULL);
+                //std::cout << "advance " << iteration_ctr << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 
                 /*gunrock::oprtr::edge_map_forward::Kernel<typename AdvanceKernelPolicy::THREAD_WARP_CTA_FORWARD, BFSProblem, BfsFunctor>
                 <<<enactor_stats.advance_grid_size, AdvanceKernelPolicy::THREAD_WARP_CTA_FORWARD::THREADS>>>(
@@ -347,10 +352,109 @@ class BFSEnactor : public EnactorBase
                 if (done[0] == 0) break;
 
                 // Filter
-                std::cout << "Filter " << enactor_stats.filter_grid_size << std::endl;
+                unsigned long grid[3], block[3];
+                grid[0] = enactor_stats.filter_grid_size; grid[1] = 1; grid[2] = 1;
+                block[0] = FilterKernelPolicy::THREADS; block[1] = 1; block[2] = 1;
+                KernelIdentifier kid("gunrock::oprtr::filter::Kernel", grid, block);
+                unsigned long have_run_for=0;
+                if(allocate == 0)
+                {
+                cudaMalloc(&d_yield_point_ret, sizeof(unsigned int));
+                cudaMalloc(&d_elapsed_ret, sizeof(int));
+                allocate = 1;
+                }
+                long service_id = -1, service_id_dummy = -1;
+                h_yield_point = 0;
+                h_elapsed = 0;
+		bool global_only = false, yield_global = false, yield_global_select = false, yield_local = true, yield_local_select = false;
+                if(/*(iteration_ctr == 4)||*//*(iteration_ctr == 5)*//*||(iteration_ctr == 6)*/true)
+                {
+                    yield_global_select = true;
+                    yield_local_select = true;
+                }
+                global_only = false;
+		while(h_yield_point < grid[0]*grid[1]-1)
+		{
+			if(yield_global || global_only)
+			{
+				if(h_yield_point == 0)
+				{
+					service_id = EvqueueLaunch(kid, have_run_for, service_id_dummy);
+					//std::cout << "New " << h_yield_point << " " << service_id << std::endl;
+					assert(service_id != -1);
+				}
+				else
+				{
+					service_id_dummy = EvqueueLaunch(kid, have_run_for, service_id);
+					std::cout << "In service " << h_yield_point << " " << have_run_for << " " << service_id << std::endl;
+					assert(service_id_dummy == -1);
+				}
+				assert(service_id != -1);
+			}
+                        if(yield_local && yield_local_select)
+                        {
+				unsigned int allotted_slice=1000000; /*1000000000;*/
                 struct timeval start, end;
-                cudaDeviceSynchronize();
+		cudaMemcpy(d_yield_point_ret, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_elapsed_ret, &h_elapsed, sizeof(int), cudaMemcpyHostToDevice);
+                //cudaDeviceSynchronize();
                 gettimeofday(&start, NULL);
+                gunrock::oprtr::filter::Kernelinstrumented<FilterKernelPolicy, BFSProblem, BfsFunctor>
+                <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
+                    enactor_stats.iteration+1,
+                    frontier_attribute.queue_reset,
+                    frontier_attribute.queue_index,
+                    enactor_stats.num_gpus,
+                    frontier_attribute.queue_length,
+                    d_done,
+                    graph_slice->frontier_queues.d_keys[frontier_attribute.selector],      // d_in_queue
+                    graph_slice->frontier_queues.d_values[frontier_attribute.selector],    // d_pred_in_queue
+                    graph_slice->frontier_queues.d_keys[frontier_attribute.selector^1],    // d_out_queue
+                    data_slice,
+                    problem->data_slices[enactor_stats.gpu_id]->d_visited_mask,
+                    work_progress,
+                    graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
+                    graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
+                    enactor_stats.filter_kernel_stats,
+                        true,
+	                allotted_slice,
+		        d_yield_point_ret, 
+		        d_elapsed_ret);
+                //cudaDeviceSynchronize();
+				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+                gettimeofday(&end, NULL);
+				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+                                assert(h_elapsed != -1);
+                //std::cout << "filter " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << enactor_stats.filter_grid_size << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                                h_elapsed = -1;
+
+                        }
+			else if(yield_global && yield_global_select && service_id != 10000000) /*yield needed*/
+			{
+				unsigned int allotted_slice=10000000; /*1000000000;*/
+                gunrock::oprtr::filter::Kernelinstrumented<FilterKernelPolicy, BFSProblem, BfsFunctor>
+                <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
+                    enactor_stats.iteration+1,
+                    frontier_attribute.queue_reset,
+                    frontier_attribute.queue_index,
+                    enactor_stats.num_gpus,
+                    frontier_attribute.queue_length,
+                    d_done,
+                    graph_slice->frontier_queues.d_keys[frontier_attribute.selector],      // d_in_queue
+                    graph_slice->frontier_queues.d_values[frontier_attribute.selector],    // d_pred_in_queue
+                    graph_slice->frontier_queues.d_keys[frontier_attribute.selector^1],    // d_out_queue
+                    data_slice,
+                    problem->data_slices[enactor_stats.gpu_id]->d_visited_mask,
+                    work_progress,
+                    graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
+                    graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
+                    enactor_stats.filter_kernel_stats);
+				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+				have_run_for+=h_elapsed;
+			}
+			else /*first run of this kernel, so don't yield*/
+			{
                 gunrock::oprtr::filter::Kernel<FilterKernelPolicy, BFSProblem, BfsFunctor>
                 <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
                     enactor_stats.iteration+1,
@@ -368,9 +472,10 @@ class BFSEnactor : public EnactorBase
                     graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
                     graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
                     enactor_stats.filter_kernel_stats);
-                cudaDeviceSynchronize();
-                gettimeofday(&end, NULL);
-                std::cout << "Filter " << ++iteration_ctr << " " << enactor_stats.filter_grid_size << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+				break;
+			}
+		}
+                h_yield_point = 0;
 
                 if (DEBUG && (retval = util::GRError(cudaThreadSynchronize(), "filter_forward::Kernel failed", __FILE__, __LINE__))) break;
                 cudaEventQuery(throttle_event); // give host memory mapped visibility to GPU updates
