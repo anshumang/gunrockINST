@@ -368,7 +368,7 @@ void RunTests(
         elapsed += gpu_timer.ElapsedMillis();
         if(iter % 1 == 0)
         {
-           //EvqueueSynch();
+           EvqueueSynch();
         }
     }
     elapsed /= iterations;

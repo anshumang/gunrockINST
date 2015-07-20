@@ -563,12 +563,15 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                 long service_id = -1, service_id_dummy = -1;
                 h_yield_point = 0;
                 h_elapsed = 0;
-		bool yield_global = false, yield_global_select = false, yield_local = true, yield_local_select = false;
+		bool yield_global = true, yield_global_select = false, yield_local = false, yield_local_select = false;
                 if(/*iteration_ctr == 11*/true)
                 {
                     yield_global_select = true;
                     yield_local_select = true;
                 }
+		cudaMemcpy(&d_yield_point_persist, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(&d_yield_point, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(&d_elapsed, &h_elapsed, sizeof(int), cudaMemcpyHostToDevice);
 		while(h_yield_point < grid[0]*grid[1]-1)
 		{
 			if(yield_global)
@@ -638,8 +641,8 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                         }
 			else if(yield_global && yield_global_select && service_id != 10000000) /*yield needed*/
 			{
-                                std::cout << "Global " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
-				unsigned int allotted_slice=10000000; /*1000000000;*/
+                                //std::cout << "Global " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
+				unsigned int allotted_slice=1000000; /*1000000000;*/
 				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
 					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
 							frontier_attribute.queue_reset,
@@ -674,6 +677,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(int), cudaMemcpyDeviceToHost);
 				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
 				have_run_for+=h_elapsed;
+			        std::cout << "g advance " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << num_block << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 			}
 			else /*first run of this kernel, so don't yield*/
 			{

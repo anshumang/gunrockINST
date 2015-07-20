@@ -593,7 +593,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                         }*/
 			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
 			{   
-                                //printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+                                printf("LAST f %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
 				int val = atomicExch(&d_yield_point, 0);
 				if(val == gridDim.x * gridDim.y - 1)
 					atomicExch(&d_yield_point_persist, 0);
@@ -634,16 +634,18 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 		}
 		else
 		{  
+			elapsed = start_clock - d_zero_clock[mysmid];
 			if(blockIdx.x + blockIdx.y * gridDim.x <= d_yield_point_persist)
 			{
 				yield = true;
 			}
 			else
 			{
-				elapsed = start_clock - d_zero_clock[mysmid];
+				//elapsed = start_clock - d_zero_clock[mysmid];
 				if(elapsed >= /*20000000*/allotted_slice)
 				{
 					yield = true;
+					atomicMax(&d_elapsed, elapsed);
 				}
 				else
 				{
@@ -654,7 +656,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 			}
 			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
 			{   
-                                //printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+                                //printf("LAST n %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
 				int val = atomicExch(&d_yield_point, 0);
 				if(val == gridDim.x * gridDim.y - 1)
 					atomicExch(&d_yield_point_persist, 0);
