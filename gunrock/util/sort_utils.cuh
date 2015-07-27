@@ -98,14 +98,20 @@ namespace util {
 	  &d_temp_storage, temp_storage_bytes)),
 	  "CUB RadixSort malloc d_temp_storage failed",
 	  __FILE__, __LINE__)) return retval;
-	if (util::GRError((retval = cub::DeviceRadixSort::SortPairsDescending(
+	/*if (util::GRError((retval = cub::DeviceRadixSort::SortPairsDescending(
 	  d_temp_storage,
 	  temp_storage_bytes,
 	  key_buffer,
 	  value_buffer,
 	  num_elements)),
 	  "cub::DeviceRadixSort::SortPairsDescending failed",
-	  __FILE__, __LINE__)) return retval;
+	  __FILE__, __LINE__)) return retval;*/
+	retval = cub::DeviceRadixSort::SortPairsDescending(
+	  d_temp_storage,
+	  temp_storage_bytes,
+	  key_buffer,
+	  value_buffer,
+	  num_elements);
       }
     }
     else

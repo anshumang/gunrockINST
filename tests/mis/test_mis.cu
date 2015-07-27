@@ -209,12 +209,12 @@ void RunTests(
     struct timeval start, end;
     for (int iter = 0; iter < iterations; ++iter)
     {
-        std::cout << "Iteration " << iter << std::endl;
+        //std::cout << "Iteration " << iter << std::endl;
         util::GRError(
             csr_problem->Reset(mis_enactor.GetFrontierType()),
             "MIS Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
-        if(iter%20==0)
+        if(iter%10==0)
         {
         gettimeofday(&start, NULL);
         }
@@ -223,13 +223,13 @@ void RunTests(
                 context, csr_problem, max_iter, max_grid_size),
             "MIS Problem Enact Failed", __FILE__, __LINE__);
         gpu_timer.Stop();
-        if(iter%20==19)
+        if(iter%10==9)
         {
         gettimeofday(&end, NULL);
         std::cerr << "[MIS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         }
         elapsed += gpu_timer.ElapsedMillis();
-	//EvqueueSynch();
+	EvqueueSynch();
     }
     elapsed /= iterations;
 
@@ -335,7 +335,7 @@ void RunTests(
 
 int main( int argc, char** argv)
 {
-    EvqueueCreate(2);
+    EvqueueCreate(3);
 
     CommandLineArgs args(argc, argv);
 

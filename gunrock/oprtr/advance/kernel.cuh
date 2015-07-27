@@ -553,7 +553,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                 grid[0] = num_block; grid[1] = 1; grid[2] = 1;
                 block[0] = KernelPolicy::LOAD_BALANCED::THREADS; block[1] = 1; block[2] = 1;
                 KernelIdentifier kid("RelaxPartitionedEdges2", grid, block);
-                unsigned long have_run_for=0;
+                long have_run_for=0;
                 if(allocate == 0)
                 {
                 cudaMalloc(&d_yield_point_ret, sizeof(int));
@@ -563,42 +563,43 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
                 long service_id = -1, service_id_dummy = -1;
                 h_yield_point = 0;
                 h_elapsed = 0;
-		bool yield_global = true, yield_global_select = false, yield_local = false, yield_local_select = false;
-                if(/*iteration_ctr == 11*/true)
+		bool global_only = true, yield_global = true, yield_global_select = false, yield_local = false, yield_local_select = false, global_only_select = false;
+                if(/*(iteration_ctr == 4)||(iteration_ctr == 5)||(iteration_ctr == 6)*/true)
                 {
                     yield_global_select = true;
                     yield_local_select = true;
+                    global_only_select = true;
                 }
 		cudaMemcpy(&d_yield_point_persist, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
 		cudaMemcpy(&d_yield_point, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
 		cudaMemcpy(&d_elapsed, &h_elapsed, sizeof(int), cudaMemcpyHostToDevice);
 		while(h_yield_point < grid[0]*grid[1]-1)
 		{
-			if(yield_global)
+			if(/*yield_global ||*/ (global_only && global_only_select))
 			{
 				if(h_yield_point == 0)
 				{
 					service_id = EvqueueLaunch(kid, have_run_for, service_id_dummy);
-					std::cout << "New " << h_yield_point << " " << service_id << std::endl;
+					std::cout << "New advance " << iteration_ctr << " " << h_yield_point << " " << service_id << std::endl;
 					assert(service_id != -1);
 				}
 				else
 				{
 					service_id_dummy = EvqueueLaunch(kid, have_run_for, service_id);
-					std::cout << "In service " << h_yield_point << " " << have_run_for << " " << service_id << std::endl;
+					std::cout << "In service advance " << iteration_ctr << " " << h_yield_point << " " << have_run_for << " " << service_id << std::endl;
 					assert(service_id_dummy == -1);
 				}
 				assert(service_id != -1);
 			}
                         if(yield_local && yield_local_select)
                         {
-                                //std::cout << "Local " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
+                                //std::cout << "Local advance " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
 				struct timeval start, end;
 				cudaMemcpy(d_yield_point_ret, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
 				cudaMemcpy(d_elapsed_ret, &h_elapsed, sizeof(int), cudaMemcpyHostToDevice);
 				//cudaDeviceSynchronize();
 				gettimeofday(&start, NULL);
-				unsigned int allotted_slice=128000000; /*1000000000;*/
+				unsigned int allotted_slice=1000000; /*1000000000;*/
 				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
 					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
 							frontier_attribute.queue_reset,
@@ -635,13 +636,13 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 				gettimeofday(&end, NULL);
 				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
                                 assert(h_elapsed != -2);
-			        //std::cout << "advance " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << num_block << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+			        std::cout << "l advance " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << num_block << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
                                 h_elapsed = -2;
 
                         }
-			else if(yield_global && yield_global_select && service_id != 10000000) /*yield needed*/
+			else if(yield_global && yield_global_select && service_id != 1000000) /*yield needed*/
 			{
-                                //std::cout << "Global " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
+                                std::cout << "Global advance " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
 				unsigned int allotted_slice=1000000; /*1000000000;*/
 				gunrock::oprtr::edge_map_partitioned::RelaxPartitionedEdges2instrumented<typename KernelPolicy::LOAD_BALANCED, ProblemData, Functor>
 					<<< num_block, KernelPolicy::LOAD_BALANCED::THREADS >>>(
@@ -681,7 +682,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 			}
 			else /*first run of this kernel, so don't yield*/
 			{
-                                //std::cout << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
+                                //std::cout << "def advance " << iteration_ctr << " " << yield_local << " " << yield_local_select << std::endl;
                                 //struct timeval start, end;
                                 //cudaDeviceSynchronize();
                                 //gettimeofday(&start, NULL);
@@ -715,7 +716,7 @@ template <typename KernelPolicy, typename ProblemData, typename Functor>
 							d_reduce_frontier); 
                                 //cudaDeviceSynchronize();
                                 //gettimeofday(&end, NULL);
-				//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+				//std::cout << "def advance " << iteration_ctr << " " << grid[0] << " " << grid[1] << " " << block[0] << " " << block[1] << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 				break;
 			}
 			//std::cout << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;

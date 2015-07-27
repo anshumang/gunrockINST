@@ -24,12 +24,12 @@
 // Graph construction utils
 #include <gunrock/graphio/market.cuh>
 
+#include "EvqueueManager.h"
+
 // CC includes
 #include <gunrock/app/cc/cc_enactor.cuh>
 #include <gunrock/app/cc/cc_problem.cuh>
 #include <gunrock/app/cc/cc_functor.cuh>
-
-#include "EvqueueManager.h"
 
 // Operator includes
 #include <gunrock/oprtr/filter/kernel.cuh>
@@ -282,23 +282,23 @@ void RunTests(
             "CC Problem Data Reset Failed", __FILE__, __LINE__);
 
         gpu_timer.Start();
-        if(iter%50==0)
+        if(iter%/*50*/7==0)
         {
         gettimeofday(&start, NULL);
         }
         util::GRError(
             cc_enactor.template Enact<Problem>(csr_problem, max_grid_size),
             "CC Problem Enact Failed", __FILE__, __LINE__);
-        if(iter%50==49)
+        if(iter%/*50*/7==/*49*/6)
         {
         gettimeofday(&end, NULL);
         std::cerr << "[CC] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
         }
-        //EvqueueSynch();
+        EvqueueSynch();
         gpu_timer.Stop();
 
         elapsed += gpu_timer.ElapsedMillis();
-        printf("iteration %d, time: %.5f\n", iter+1, gpu_timer.ElapsedMillis());
+        //printf("iteration %d, time: %.5f\n", iter+1, gpu_timer.ElapsedMillis());
     }
     elapsed /= iterations;
 
@@ -399,7 +399,7 @@ void RunTests(
 
 int main( int argc, char** argv)
 {
-    EvqueueCreate(2);
+    EvqueueCreate(4);
     CommandLineArgs args(argc, argv);
 
     if ((argc < 2) || (args.CheckCmdLineFlag("help")))

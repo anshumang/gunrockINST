@@ -517,7 +517,7 @@ int main( int argc, char** argv)
 {
     //init_cupti_trace();    
 
-    EvqueueCreate(2);
+    EvqueueCreate(1);
 
     CommandLineArgs args(argc, argv);
 

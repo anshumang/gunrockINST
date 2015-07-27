@@ -490,7 +490,7 @@ class PREnactor : public EnactorBase
             cudaEventSynchronize(stop);
             cudaEventElapsedTime(&actual_elapsed, start, stop);
 
-            printf("PageRank actual_kernel_elapsed: %.4f ms\n", actual_elapsed);
+            //printf("PageRank actual_kernel_elapsed: %.4f ms\n", actual_elapsed);
 
             cudaEventDestroy(start);
             cudaEventDestroy(stop);

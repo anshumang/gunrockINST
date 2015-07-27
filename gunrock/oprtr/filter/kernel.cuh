@@ -394,7 +394,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                 {
                     printf("yield %d %d\n", *d_ret1, *d_ret2);
                 }*/
-		if(blockIdx.x + blockIdx.y * gridDim.x < 90)
+		if(blockIdx.x + blockIdx.y * gridDim.x < 15/*90*/)
 		{
 			if(atomicCAS(&d_clock_initialized[mysmid], 0, 1)==0)
 			{
@@ -407,7 +407,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 				elapsed = start_clock - d_zero_clock[mysmid];
                                 //printf("%d %d\n", blockIdx.x, elapsed);
 			}
-			if(d_yield_point_persist >= 89)
+			if(d_yield_point_persist >= 14/*89*/)
 			{
 				yield = true;
 			}
@@ -415,8 +415,8 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 			{
 				yield = false;
 				atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
-				atomicMax(&d_elapsed, elapsed);
 			}
+			atomicMax(&d_elapsed, elapsed);
                         /*if(blockIdx.x == 0)
                         {
 			    printf("FIRST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
@@ -455,7 +455,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 				}
 				else
 				{
-                                        printf("FILTER %d %d %lld %lld\n", blockIdx.x, mysmid, start_clock, d_zero_clock[mysmid]);
+                                        //printf("FILTER %d %d %lld %lld\n", blockIdx.x, mysmid, start_clock, d_zero_clock[mysmid]);
 					yield = true;
 				}
 			}
@@ -463,13 +463,14 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 		}
 		else
 		{  
+			elapsed = start_clock - d_zero_clock[mysmid];
 			if(blockIdx.x + blockIdx.y * gridDim.x <= d_yield_point_persist)
 			{
 				yield = true;
 			}
 			else
 			{
-				elapsed = start_clock - d_zero_clock[mysmid];
+				//elapsed = start_clock - d_zero_clock[mysmid];
 				if(elapsed >= /*20000000*/allotted_slice)
 				{
 					yield = true;
@@ -482,12 +483,12 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
                                         }*/
 					yield = false;
 					atomicMax(&d_yield_point, blockIdx.x + blockIdx.y * gridDim.x);
-					atomicMax(&d_elapsed, elapsed);
 				}
 			}
+			atomicMax(&d_elapsed, elapsed);
 			if(blockIdx.x + blockIdx.y * gridDim.x == gridDim.x * gridDim.y - 1)
 			{   
-                                printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
+                                //printf("LAST %d %d %d %d %d\n", elapsed, yield, d_yield_point_persist, d_yield_point, d_elapsed);
 				int val = atomicExch(&d_yield_point, 0);
 				if(val == gridDim.x * gridDim.y - 1)
 					atomicExch(&d_yield_point_persist, 0);
@@ -503,6 +504,7 @@ struct Dispatch<KernelPolicy, ProblemData, Functor, true>
 				}
 			}
 		}
+		//printf("FILTER %d %d %d %d\n", blockIdx.x, d_yield_point, d_elapsed, d_yield_point_persist);
 	}
 	__syncthreads();
 	if(yield==true)

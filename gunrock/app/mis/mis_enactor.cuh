@@ -229,8 +229,10 @@ class MISEnactor : public EnactorBase
             frontier_attribute.queue_reset          = true;
 
             fflush(stdout);
+            unsigned int iteration_ctr = 0;
 
             while (done[0] < 0 && frontier_attribute.queue_length > 0) {
+                ++iteration_ctr;
 
             //Advance with GatherReduce
             gunrock::oprtr::advance::LaunchKernel<AdvanceKernelPolicy, MISProblem, MisFunctor>(
@@ -297,6 +299,12 @@ class MISEnactor : public EnactorBase
 
 
                 //Filter
+                unsigned long grid[3], block[3];
+                grid[0] = enactor_stats.filter_grid_size; grid[1] = 1; grid[2] = 1;
+                block[0] = FilterKernelPolicy::THREADS; block[1] = 1; block[2] = 1;
+		//struct timeval start, end;
+		//cudaDeviceSynchronize();
+		//gettimeofday(&start, NULL);
                 gunrock::oprtr::filter::Kernel<FilterKernelPolicy, MISProblem, MisFunctor>
                 <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
                     enactor_stats.iteration+1,
@@ -314,6 +322,9 @@ class MISEnactor : public EnactorBase
                     graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
                     graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
                     enactor_stats.filter_kernel_stats);
+		//cudaDeviceSynchronize();
+		//gettimeofday(&end, NULL);
+		//std::cout << "def filter " << iteration_ctr << " " << grid[0] << " " << grid[1] << " " << block[0] << " " << block[1] << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 
                 if (DEBUG && (retval = util::GRError(cudaThreadSynchronize(), "filter::Kernel failed", __FILE__, __LINE__))) break;
                 cudaEventQuery(throttle_event); // give host memory mapped visibility to GPU updates

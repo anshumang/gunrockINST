@@ -413,7 +413,7 @@ void RunTests(
                                max_queue_sizing),
             "BFS Problem Data Reset Failed", __FILE__, __LINE__);
         gpu_timer.Start();
-        if(iter%10==0)
+        if(iter%100==0)
         {
         gettimeofday(&start, NULL);
         }
@@ -421,7 +421,7 @@ void RunTests(
             bfs_enactor.template Enact<Problem>(context, csr_problem, src,
                                                 max_grid_size, traversal_mode),
             "BFS Problem Enact Failed", __FILE__, __LINE__);
-        if(iter%10==9)
+        if(iter%100==99)
         {
         gettimeofday(&end, NULL);
         std::cerr << "[BFS] ---- " << (end.tv_sec - start.tv_sec)*1000000+(end.tv_usec - start.tv_usec) << std::endl;
@@ -429,7 +429,10 @@ void RunTests(
         gpu_timer.Stop();
 
         elapsed += gpu_timer.ElapsedMillis();
+        if(iter%100==0)
+        {
         //EvqueueSynch();
+        }
     }
 
     elapsed /= iterations;

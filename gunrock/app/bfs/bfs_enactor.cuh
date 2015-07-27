@@ -95,12 +95,17 @@ class BFSEnactor : public EnactorBase
             // Bind row-offsets and bitmask texture
             cudaChannelFormatDesc   row_offsets_desc = cudaCreateChannelDesc<SizeT>();
             gunrock::oprtr::edge_map_forward::RowOffsetTex<SizeT>::ref.channelDesc = row_offsets_desc;
-            if (retval = util::GRError(cudaBindTexture(
+            /*if (retval = util::GRError(cudaBindTexture(
                     0,
                     gunrock::oprtr::edge_map_forward::RowOffsetTex<SizeT>::ref,
                     graph_slice->d_row_offsets,
                     (graph_slice->nodes + 1) * sizeof(SizeT)),
-                        "BFSEnactor cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+                        "BFSEnactor cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;*/
+            cudaBindTexture(
+                    0,
+                    gunrock::oprtr::edge_map_forward::RowOffsetTex<SizeT>::ref,
+                    graph_slice->d_row_offsets,
+                    (graph_slice->nodes + 1) * sizeof(SizeT));
 
             if (ProblemData::ENABLE_IDEMPOTENCE) {
                 int bytes = (graph_slice->nodes + 8 - 1) / 8;
@@ -356,7 +361,7 @@ class BFSEnactor : public EnactorBase
                 grid[0] = enactor_stats.filter_grid_size; grid[1] = 1; grid[2] = 1;
                 block[0] = FilterKernelPolicy::THREADS; block[1] = 1; block[2] = 1;
                 KernelIdentifier kid("gunrock::oprtr::filter::Kernel", grid, block);
-                unsigned long have_run_for=0;
+                long have_run_for=0;
                 if(allocate == 0)
                 {
                 cudaMalloc(&d_yield_point_ret, sizeof(unsigned int));
@@ -366,27 +371,30 @@ class BFSEnactor : public EnactorBase
                 long service_id = -1, service_id_dummy = -1;
                 h_yield_point = 0;
                 h_elapsed = 0;
-		bool global_only = false, yield_global = false, yield_global_select = false, yield_local = true, yield_local_select = false;
-                if(/*(iteration_ctr == 4)||*//*(iteration_ctr == 5)*//*||(iteration_ctr == 6)*/true)
+		bool global_only = false, yield_global = false, yield_global_select = false, yield_local = false, yield_local_select = false, global_only_select = false;
+                if(/*(iteration_ctr == 4)||(iteration_ctr == 5)||(iteration_ctr == 6)*/true)
                 {
                     yield_global_select = true;
                     yield_local_select = true;
+                    global_only_select = true;
                 }
-                global_only = false;
+		cudaMemcpy(&d_yield_point_persist, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(&d_yield_point, &h_yield_point, sizeof(int), cudaMemcpyHostToDevice);
+		cudaMemcpy(&d_elapsed, &h_elapsed, sizeof(int), cudaMemcpyHostToDevice);
 		while(h_yield_point < grid[0]*grid[1]-1)
 		{
-			if(yield_global || global_only)
+			if(yield_global || (global_only && global_only_select))
 			{
 				if(h_yield_point == 0)
 				{
 					service_id = EvqueueLaunch(kid, have_run_for, service_id_dummy);
-					//std::cout << "New " << h_yield_point << " " << service_id << std::endl;
+					std::cout << "New filter " << iteration_ctr << " " << h_yield_point << " " << service_id << std::endl;
 					assert(service_id != -1);
 				}
 				else
 				{
 					service_id_dummy = EvqueueLaunch(kid, have_run_for, service_id);
-					std::cout << "In service " << h_yield_point << " " << have_run_for << " " << service_id << std::endl;
+					std::cout << "In service filter " << iteration_ctr << " " << h_yield_point << " " << have_run_for << " " << service_id << std::endl;
 					assert(service_id_dummy == -1);
 				}
 				assert(service_id != -1);
@@ -425,13 +433,16 @@ class BFSEnactor : public EnactorBase
                 gettimeofday(&end, NULL);
 				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
                                 assert(h_elapsed != -1);
-                //std::cout << "filter " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << enactor_stats.filter_grid_size << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                std::cout << "l filter " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << enactor_stats.filter_grid_size << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
                                 h_elapsed = -1;
+                                break;
 
                         }
-			else if(yield_global && yield_global_select && service_id != 10000000) /*yield needed*/
+			else if(yield_global && yield_global_select && service_id != 1000000) /*yield needed*/
 			{
-				unsigned int allotted_slice=10000000; /*1000000000;*/
+				struct timeval start, end;
+				unsigned int allotted_slice=1000000; /*1000000000;*/
+				gettimeofday(&start, NULL);
                 gunrock::oprtr::filter::Kernelinstrumented<FilterKernelPolicy, BFSProblem, BfsFunctor>
                 <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
                     enactor_stats.iteration+1,
@@ -448,13 +459,25 @@ class BFSEnactor : public EnactorBase
                     work_progress,
                     graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
                     graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
-                    enactor_stats.filter_kernel_stats);
+                    enactor_stats.filter_kernel_stats,
+                        true,
+	                allotted_slice,
+		        d_yield_point_ret, 
+		        d_elapsed_ret);
 				cudaMemcpy(&h_yield_point, d_yield_point_ret, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+				gettimeofday(&end, NULL);
 				cudaMemcpy(&h_elapsed, d_elapsed_ret, sizeof(int), cudaMemcpyDeviceToHost);
+                                assert(h_elapsed != -1);
 				have_run_for+=h_elapsed;
+			        std::cout << "g filter " << iteration_ctr << " " << h_yield_point << " " << h_elapsed << " " << enactor_stats.filter_grid_size << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
+                                break;
 			}
 			else /*first run of this kernel, so don't yield*/
 			{
+                                //std::cout << "def filter " << iteration_ctr  << std::endl;
+                                //struct timeval start, end;
+                                //cudaDeviceSynchronize();
+                                //gettimeofday(&start, NULL);
                 gunrock::oprtr::filter::Kernel<FilterKernelPolicy, BFSProblem, BfsFunctor>
                 <<<enactor_stats.filter_grid_size, FilterKernelPolicy::THREADS>>>(
                     enactor_stats.iteration+1,
@@ -472,6 +495,9 @@ class BFSEnactor : public EnactorBase
                     graph_slice->frontier_elements[frontier_attribute.selector],           // max_in_queue
                     graph_slice->frontier_elements[frontier_attribute.selector^1],         // max_out_queue
                     enactor_stats.filter_kernel_stats);
+                                //cudaDeviceSynchronize();
+                                //gettimeofday(&end, NULL);
+				//std::cout << "def filter " << iteration_ctr << " " << (end.tv_sec - start.tv_sec)*1000000 + (end.tv_usec - start.tv_usec) << std::endl;
 				break;
 			}
 		}

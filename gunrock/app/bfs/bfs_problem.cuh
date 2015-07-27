@@ -316,12 +316,17 @@ struct BFSProblem : ProblemBase<_VertexId, _SizeT,
                 util::MemsetKernel<<<128, 128>>>(data_slices[gpu]->d_visited_mask, (unsigned char)0, visited_mask_elements);
             }
                 
-            if (retval = util::GRError(cudaMemcpy(
+            /*if (retval = util::GRError(cudaMemcpy(
                             d_data_slices[gpu],
                             data_slices[gpu],
                             sizeof(DataSlice),
                             cudaMemcpyHostToDevice),
-                        "BFSProblem cudaMemcpy data_slices to d_data_slices failed", __FILE__, __LINE__)) return retval;
+                        "BFSProblem cudaMemcpy data_slices to d_data_slices failed", __FILE__, __LINE__)) return retval;*/
+            cudaMemcpy(
+                            d_data_slices[gpu],
+                            data_slices[gpu],
+                            sizeof(DataSlice),
+                            cudaMemcpyHostToDevice);
 
         }
 
